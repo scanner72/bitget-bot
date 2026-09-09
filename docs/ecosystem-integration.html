@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Bitget Agent Hub — пути интеграции · Divergent Agent Desk</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --card: #121821;
+    --line: #1e2a38;
+    --text: #e8eef6;
+    --muted: #8b9bb0;
+    --accent: #00d4aa;
+    --accent2: #3b82f6;
+    --warn: #f59e0b;
+    --danger: #f43f5e;
+    --chip: #1a2433;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; overflow: hidden; }
+  .deck { height: 100%; position: relative; }
+  .slide {
+    display: none; height: 100%; padding: 48px 64px 72px;
+    flex-direction: column; justify-content: center; gap: 18px;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .slide.active { display: flex; animation: in .25s ease; }
+  @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  h1 { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+  h2 { font-size: 1.85rem; font-weight: 650; letter-spacing: -0.02em; }
+  h3 { font-size: 1.15rem; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+  p, li { font-size: 1.05rem; line-height: 1.55; color: var(--text); }
+  .muted { color: var(--muted); }
+  .lead { font-size: 1.25rem; color: var(--muted); max-width: 52rem; }
+  ul { padding-left: 1.25rem; display: flex; flex-direction: column; gap: 8px; }
+  .tag {
+    display: inline-block; font-size: .75rem; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--accent); background: rgba(0,212,170,.12);
+    border: 1px solid rgba(0,212,170,.35); padding: 4px 10px; border-radius: 999px;
+    width: fit-content;
+  }
+  .grid { display: grid; gap: 14px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .card strong { color: var(--accent); }
+  .path-num {
+    font-size: .8rem; font-weight: 700; color: var(--accent2);
+    margin-bottom: 4px;
+  }
+  code, .mono {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: .92em; background: var(--chip); padding: 2px 7px; border-radius: 6px;
+    border: 1px solid var(--line);
+  }
+  pre {
+    background: #06090d; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; overflow-x: auto; font-size: .88rem; line-height: 1.45;
+    font-family: ui-monospace, Consolas, monospace; color: #c8d6e5;
+  }
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; background: rgba(11,15,20,.92); border-top: 1px solid var(--line);
+    backdrop-filter: blur(8px); font-size: .85rem; color: var(--muted); z-index: 10;
+  }
+  .bar button {
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: .85rem;
+  }
+  .bar button:hover { border-color: var(--accent); color: var(--accent); }
+  .progress {
+    position: fixed; top: 0; left: 0; height: 3px; background: var(--accent);
+    transition: width .2s ease; z-index: 11;
+  }
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px;
+  }
+  .flow span {
+    background: var(--chip); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; font-size: .9rem;
+  }
+  .flow .arrow { background: transparent; border: none; color: var(--accent); font-weight: 700; }
+  .rec { border-left: 3px solid var(--accent); padding-left: 14px; }
+  .warn-box { border-left: 3px solid var(--warn); padding-left: 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  .ok { color: var(--accent); }
+  .no { color: var(--danger); }
+  .mid { color: var(--warn); }
+  @media (max-width: 800px) {
+    .slide { padding: 28px 20px 64px; }
+    h1 { font-size: 1.7rem; } h2 { font-size: 1.35rem; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="deck" id="deck">
+
+<!-- 0 -->
+<section class="slide active">
+  <span class="tag">Bitget AI Hackathon S2 · Agent Trading</span>
+  <h1>Как интегрировать экосистему Bitget</h1>
+  <p class="lead">Все пути: Agent Hub (SDK · CLI · MCP · Skills · Signal) и Playbook — простым языком, с рекомендацией для <strong style="color:var(--text)">Divergent Agent Desk</strong>.</p>
+  <p class="muted">Стрелки ← → или клик по кнопкам внизу</p>
+</section>
+
+<!-- 1 -->
+<section class="slide">
+  <span class="tag">Карта</span>
+  <h2>Два мира экосистемы</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>1. Agent Hub — для разработчиков</h3>
+      <p>Открытый toolkit: подключаешь AI-агента (Cursor, Claude, Codex, свой бот) к бирже Bitget через официальные API-обёртки.</p>
+      <p class="muted" style="margin-top:8px">SDK · CLI (<code>bgc</code>) · MCP · Skills · Signal</p>
+    </div>
+    <div class="card">
+      <h3>2. Playbook / GetAgent — для трейдера</h3>
+      <p>Продукт внутри Bitget AI: готовые сценарии стратегий, суб-аккаунт, UI «выбрал и запустил». Не то же самое, что Hub CLI.</p>
+      <p class="muted" style="margin-top:8px">Для хакатона — бонус/нарратив, не обязательный код</p>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <span class="tag">Слой 0</span>
+  <h2>Что общее у всех путей Hub</h2>
+  <ul>
+    <li>Снизу одна биржа: <strong>UTA v3</strong> (Unified Trading Account) — spot, futures, account…</li>
+    <li>~<strong>89 операций</strong>, сверху — <strong>14 intent-глаголов</strong> (order, position, market…)</li>
+    <li>Ключи: live API Key <em>или</em> отдельный <strong>Demo API Key</strong></li>
+    <li>Безопасный режим: флаг <code>--paper-trading</code> → Bitget Demo (не «блокчейн-тестнет»)</li>
+    <li>Дополнительно: <code>--read-only</code>, <code>--dry-run</code>, подтверждение на опасные write</li>
+  </ul>
+  <p class="warn-box" style="margin-top:12px">Demo ≠ наш локальный paper в <code>C:\bitget-bot</code>. Demo — официальная песочница биржи.</p>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <span class="tag">Путь A</span>
+  <h2>SDK — библиотека в коде</h2>
+  <p class="path-num">Пакет · bitget-agent-sdk (TypeScript)</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Что это</h3>
+      <p>Типизированный клиент: каталог операций, REST, rate-limit, mock. Твой Python/TS-сервис импортирует SDK и сам вызывает place/cancel/positions.</p>
+    </div>
+    <div class="card">
+      <h3>Когда брать</h3>
+      <p>Основной путь для <strong>встройки в Divergent Agent Desk</strong>: слой exec вместо локального paper → Demo/live через официальный клиент.</p>
+    </div>
+  </div>
+  <pre style="margin-top:8px"># идея интеграции
+signal → decide(LLM/rules) → risk → exec_sdk.place(order)
+                              ↑
+                     BITGET_* + paperTrading: true</pre>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <span class="tag">Путь B</span>
+  <h2>CLI — <code>bgc</code> из терминала</h2>
+  <p class="path-num">Пакет · bitget-agent-cli</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Что это</h3>
+      <p>Командная строка поверх SDK. Агент или скрипт говорит: «открой лонг» → <code>bgc --paper-trading order --action place …</code></p>
+    </div>
+    <div class="card">
+      <h3>Когда брать</h3>
+      <p>Быстрые смоуки, shell-агенты (Claude Code / Codex), демо «человек в терминале». Не идеально как ядро долгого desk-loop.</p>
+    </div>
+  </div>
+  <pre style="margin-top:8px">bgc --paper-trading account get_account_assets
+bgc --paper-trading order --action place …</pre>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <span class="tag">Путь C</span>
+  <h2>MCP — инструменты в Cursor / Claude</h2>
+  <p class="path-num">Пакет · bitget-agent-mcp</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Что это</h3>
+      <p>Локальный MCP-сервер: у ИИ в IDE появляются «кнопки» Bitget (intent + discover + raw). Ордера — через те же Demo/live ключи.</p>
+    </div>
+    <div class="card">
+      <h3>Когда брать</h3>
+      <p>Демо судьям «агент в Cursor торгует на Demo». Для нашего Docker-desk — опционально рядом, не вместо SDK в пайплайне.</p>
+    </div>
+  </div>
+  <pre style="margin-top:8px">args: ["-y", "@bitget-ai/bitget-agent-mcp", "--paper-trading"]
+env:  BITGET_API_KEY / SECRET / PASSPHRASE  ← Demo keys</pre>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <span class="tag">Путь D</span>
+  <h2>Skills — «как правильно звать биржу»</h2>
+  <p class="path-num">Пакет · bitget-agent-skill</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Что это</h3>
+      <p>Markdown-инструкции для терминального AI: когда demo, когда confirm, как не смешать live/demo, recovery по ошибкам.</p>
+    </div>
+    <div class="card">
+      <h3>Когда брать</h3>
+      <p>Если демо идёт через Cursor/Claude + <code>bgc</code>/MCP. Для нашего Python-desk skills не обязательны — важны для «vibe»-агента рядом.</p>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:8px">Skill сам по себе ордера не шлёт — учит модель не ломать API.</p>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <span class="tag">Путь E</span>
+  <h2>Signal — рынок без ключа</h2>
+  <p class="path-num">Пакет · bitget-signal (отдельно от UTA trade)</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Что это</h3>
+      <p>Рыночная аналитика / сигналы Bitget <strong>без</strong> торгового API-ключа. Не исполнение ордеров.</p>
+    </div>
+    <div class="card">
+      <h3>Когда брать</h3>
+      <p>Доп. фича: обогатить decide() внешним signal feed. Наш RSI-divergence остаётся ядром; Signal — опциональный вход.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <span class="tag">Путь F</span>
+  <h2>Playbook (GetAgent) — продукт, не SDK</h2>
+  <ul>
+    <li>Готовые workflow: условия → сигнал → риск → exec на <strong>изолированном суб-аккаунте</strong></li>
+    <li>Пользователь выбирает/настраивает в UI GetAgent (Plus/Pro)</li>
+    <li>Под капотом Agent Harness (координация моделей + риск + аудит)</li>
+  </ul>
+  <div class="card" style="margin-top:12px">
+    <h3>Как «интегрировать» для хакатона</h3>
+    <p>Не обязательно публиковать в библиотеку Playbook. Достаточно: <strong>архитектура 1:1</strong> (signal→risk→exec→audit) + текст «совместимо с идеей Playbook / Agent-Native Exchange». Полный publish — если Bitget откроет third-party.</p>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <span class="tag">Сравнение</span>
+  <h2>Какой путь для чего</h2>
+  <table>
+    <thead>
+      <tr><th>Путь</th><th>Ордера</th><th>Для нашего бота</th><th>Для демо судьям</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>SDK</td><td class="ok">да</td><td class="ok">главный</td><td class="ok">сильный</td></tr>
+      <tr><td>CLI bgc</td><td class="ok">да</td><td class="mid">смоук / fallback</td><td class="ok">показать в видео</td></tr>
+      <tr><td>MCP</td><td class="ok">да</td><td class="mid">рядом с desk</td><td class="ok">вау-эффект Cursor</td></tr>
+      <tr><td>Skills</td><td class="no">нет</td><td class="mid">если MCP/CLI</td><td class="mid">фоном</td></tr>
+      <tr><td>Signal</td><td class="no">нет</td><td class="mid">опция</td><td class="mid">nice-to-have</td></tr>
+      <tr><td>Playbook</td><td class="mid">в продукте BG</td><td class="mid">нарратив / форма</td><td class="ok">слайд «ecosystem»</td></tr>
+      <tr><td>Локальный paper</td><td class="mid">свои fills</td><td class="ok">уже есть</td><td class="mid">слабее Demo Hub</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <span class="tag">Архитектура</span>
+  <h2>Как стыкуем с Divergent Agent Desk</h2>
+  <div class="flow">
+    <span>Bitget OHLCV</span><span class="arrow">→</span>
+    <span>RSI divergence</span><span class="arrow">→</span>
+    <span>LLM / rules</span><span class="arrow">→</span>
+    <span>Risk + ATR</span><span class="arrow">→</span>
+    <span><strong style="color:var(--accent)">Exec adapter</strong></span>
+  </div>
+  <div class="grid grid-3" style="margin-top:16px">
+    <div class="card"><h3>Сейчас</h3><p><code>paper_exec</code><br/>локальный JSON</p></div>
+    <div class="card"><h3>Цель S2</h3><p><code>hub_exec</code><br/>SDK + Demo Key<br/><code>paperTrading</code></p></div>
+    <div class="card"><h3>Потом</h3><p>тот же адаптер<br/>live keys<br/>без смены сигнала</p></div>
+  </div>
+  <p class="rec muted" style="margin-top:12px">Сигнал и риск не трогаем. Меняем только «куда пишем ордер».</p>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <span class="tag">План работ</span>
+  <h2>Практическая интеграция (по шагам)</h2>
+  <ol style="padding-left:1.25rem; display:flex; flex-direction:column; gap:10px; font-size:1.05rem;">
+    <li>Создать <strong>Demo API Key</strong> на bitget.com (API Management / Demo).</li>
+    <li>Добавить в desk адаптер <code>exec/bitget_hub.py</code> (или TS sidecar) с режимом <code>EXEC_MODE=hub_demo|paper|live</code>.</li>
+    <li>Маппинг наших ордеров → UTA place/cancel/positions; SL/TP оставить своим менеджером или биржевым — выбрать одно и задокументировать.</li>
+    <li>Опционально: MCP с <code>--paper-trading</code> для видео «агент в Cursor».</li>
+    <li>В README / SUBMISSION: «исполнение через Agent Hub Demo; сигнал — свой Divergent».</li>
+    <li>Playbook: один слайд + формулировка compatibility, без ожидания publish API.</li>
+  </ol>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <span class="tag">Рекомендация</span>
+  <h2>Что делать нам для S2</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h3>Must</h3>
+      <ul>
+        <li>SDK (или тонкий wrapper) + Demo</li>
+        <li><code>EXEC_MODE</code> переключатель</li>
+        <li>Текст в submission про Hub</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Should</h3>
+      <ul>
+        <li>MCP demo в видео 30 сек</li>
+        <li>LLM decide по умолчанию в демо</li>
+        <li>GitHub публичный</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:4px">
+    <h3>Could / skip</h3>
+    <p>Полный Playbook publish · live money · замена сигнала на Bitget Signal</p>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <span class="tag">Итог</span>
+  <h2>Одной фразой</h2>
+  <p class="lead" style="font-size:1.45rem; color:var(--text)">
+    <strong style="color:var(--accent)">Интегрировать</strong> = оставить наш мозг (divergence + LLM + risk), а руки ордеров дать <strong>Agent Hub</strong> на <strong>Demo</strong>; Playbook — история для жюри, не обязательный код.
+  </p>
+  <p class="muted" style="margin-top:16px">Ресурсы: github.com/Bitget-AI/agent_hub · bitget.com/activity-hub/agent-hub</p>
+  <p style="margin-top:8px">Дальше по клику: могу начать адаптер <code>hub_demo</code> в <code>C:\bitget-bot</code>.</p>
+</section>
+
+</div>
+
+<div class="bar">
+  <button type="button" id="prev">← Назад</button>
+  <span id="label">1 / 14</span>
+  <button type="button" id="next">Вперёд →</button>
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  let i = 0;
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    document.getElementById('label').textContent = (i + 1) + ' / ' + slides.length;
+    document.getElementById('prog').style.width = ((i + 1) / slides.length * 100) + '%';
+  }
+  document.getElementById('prev').onclick = () => show(i - 1);
+  document.getElementById('next').onclick = () => show(i + 1);
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); show(i + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); show(i - 1); }
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides.length - 1);
+  });
+  show(0);
+</script>
+</body>
+</html>

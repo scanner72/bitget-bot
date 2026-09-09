@@ -355,6 +355,33 @@ class RiskGate:
         self.save_state()
         return pos
 
+    def sync_opens_from_paper(self, positions: list[dict[str, Any]]) -> int:
+        """Replace risk open book with live paper positions (repair drift after exits)."""
+        self.state.roll_day_if_needed()
+        rebuilt: list[OpenPosition] = []
+        for p in positions or []:
+            sym = str(p.get('symbol') or '').strip()
+            if not sym:
+                continue
+            meta = dict(p.get('meta') or {})
+            if p.get('position_id') is not None:
+                meta.setdefault('position_id', p.get('position_id'))
+            if p.get('side') is not None:
+                meta.setdefault('side', p.get('side'))
+            rebuilt.append(
+                OpenPosition(
+                    symbol=sym,
+                    size_usd=float(p.get('size_usd') or 0),
+                    opened_ts=str(p.get('opened_ts') or _utc_now().isoformat()),
+                    meta=meta,
+                )
+            )
+            if p.get('opened_ts'):
+                self.state.last_trade_ts[sym] = str(p.get('opened_ts'))
+        self.state.open_positions = rebuilt
+        self.save_state()
+        return len(rebuilt)
+
     def record_close(
         self,
         symbol: str,

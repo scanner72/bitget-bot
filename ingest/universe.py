@@ -141,6 +141,7 @@ def get_bitget_swap_exchange(existing: Any | None = None) -> Any:
     return ccxt.bitget(
         {
             "enableRateLimit": True,
+            "timeout": 10_000,  # ms — avoid hung UI when Bitget public API stalls
             "options": {"defaultType": "swap"},
         }
     )

@@ -477,6 +477,7 @@ def apply_position_updates(pos: dict[str, Any], updates: dict[str, Any]) -> dict
 def check_open_exits(
     *,
     book: Any | None = None,
+    gate: Any | None = None,
     cfg: ExitConfig | None = None,
     timeframe: str | None = None,
     ohlcv_limit: int = 50,
@@ -486,16 +487,23 @@ def check_open_exits(
 ) -> list[dict[str, Any]]:
     """Desk-loop helper: check all open paper positions; update or close via PaperBook.
 
+    Pass the same RiskGate used for opens so record_close stays in sync.
     Returns list of event dicts for logging.
     """
-    from exec.paper import PaperBook, close_paper
+    from exec.paper import PaperBook
+    from exec.router import close_position
 
     cfg = cfg or ExitConfig.from_env()
     if not force and not should_run_exit_check(cfg):
         return []
     mark_exit_check_ran()
 
-    b = book or PaperBook()
+    if book is not None:
+        b = book
+        if gate is not None and getattr(b, 'gate', None) is None:
+            b.gate = gate
+    else:
+        b = PaperBook(gate=gate)
     opens = b.list_open()
     if not opens:
         return []
@@ -551,6 +559,21 @@ def check_open_exits(
 
         if ev.action == "update" and ev.updates:
             updated = apply_position_updates(pos, ev.updates)
+            # After TP1 / BE timeout / trailing: push SL to exchange parachute
+            if "sl" in ev.updates and ev.updates.get("sl") is not None:
+                try:
+                    from exec.router import sync_exchange_sl
+
+                    reason = "tp1_be" if ev.updates.get("tp1_hit") else (
+                        "be_timeout" if ev.updates.get("be_timeout") else (
+                            "trailing" if ev.updates.get("trailing_active") else "sl_update"
+                        )
+                    )
+                    hub_meta = sync_exchange_sl(updated, ev.updates["sl"], reason=reason)
+                    if hub_meta:
+                        updated = apply_position_updates(updated, hub_meta)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
             b.update_position(pid, updated)
             note = ev.status or "levels_update"
             print(
@@ -578,10 +601,11 @@ def check_open_exits(
             if ev.updates:
                 close_meta.update(ev.updates)
             try:
-                result = close_paper(
+                result = close_position(
                     pid,
                     float(ev.close_price),
                     meta=close_meta,
+                    gate=gate,
                     book=b,
                 )
                 print(

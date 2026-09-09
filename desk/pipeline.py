@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from agent.decide import decide
-from exec.paper import PaperBook, open_paper
+from exec.paper import PaperBook
+from exec.router import open_position
 from ingest.symbols import to_display
 from risk.gate import RiskGate
+from risk.sizing import notional_from_risk
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DECISIONS_PATH = ROOT / "data" / "decisions.jsonl"
@@ -58,7 +60,7 @@ def evaluate_candidate(
     context: dict[str, Any] | None = None,
     paper_book: PaperBook | None = None,
 ) -> dict[str, Any]:
-    """decide -> risk.check -> (ENTER+allow) open_paper -> print + JSONL.
+    """decide -> risk.check -> (ENTER+allow) open_position -> print + JSONL.
 
     Paper-only: never places live Bitget orders.
     """
@@ -68,16 +70,18 @@ def evaluate_candidate(
 
     agent_out = decide(candidate, ctx)
     action = str(agent_out.get("action", "SKIP")).upper()
-    size = float(agent_out.get("size_usd") or 0.0)
-    if size <= 0 and action in {"ENTER", "REDUCE"}:
-        size = default_proposed_size_usd()
-        agent_out = {**agent_out, "size_usd": size}
+    # Provisional size from agent (logging only); open uses risk notional after ATR.
+    provisional_size = float(agent_out.get("size_usd") or 0.0)
+    if provisional_size <= 0 and action in {"ENTER", "REDUCE"}:
+        provisional_size = default_proposed_size_usd()
+        agent_out = {**agent_out, "size_usd": provisional_size}
+    size = provisional_size
 
     _sym = str(candidate.get("symbol") or "")
     _sym_disp = to_display(_sym) if _sym else ""
     print(
         f"[AGENT] {action} {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
-        f"side={agent_out.get('side')} size={size} "
+        f"side={agent_out.get('side')} size={provisional_size} "
         f"rationale={agent_out.get('rationale')} "
         f"rules={agent_out.get('rules_fired')}"
     )
@@ -126,9 +130,8 @@ def evaluate_candidate(
             if ohlcv_df is not None:
                 levels = compute_levels_from_df(price, side, ohlcv_df)
             if levels is not None:
-                import os as _os
-                _amin = float(_os.getenv("ATR_PCT_MIN", "0.3") or "0.3")
-                _amax = float(_os.getenv("ATR_PCT_MAX", "6.0") or "6.0")
+                _amin = float(os.getenv("ATR_PCT_MIN", "0.3") or "0.3")
+                _amax = float(os.getenv("ATR_PCT_MAX", "6.0") or "6.0")
                 ok_atr, atr_reason = atr_filter_ok(
                     levels["atr"], price, min_pct=_amin, max_pct=_amax
                 )
@@ -138,6 +141,40 @@ def evaluate_candidate(
                     levels = None
                     # Treat as paper skip (no open)
                     raise ValueError(f"atr_filter:{atr_reason}")
+
+            # Risk-based notional from distance to SL (fallback: MAX_NOTIONAL_USD)
+            risk_usd = _env_float("RISK_USD_PER_TRADE", 2.0)
+            max_notional = _env_float("MAX_NOTIONAL_USD", 100.0)
+            min_notional = _env_float("MIN_NOTIONAL_USD", 10.0)
+            if levels is not None and levels.get("sl") is not None:
+                size = notional_from_risk(
+                    price,
+                    levels["sl"],
+                    risk_usd=risk_usd,
+                    max_notional=max_notional,
+                    min_notional=min_notional,
+                )
+                atr_pct_v = levels.get("atr_pct")
+                print(
+                    f"[SIZE] risk_usd={risk_usd} atr_pct={atr_pct_v} notional={size}"
+                )
+                # Re-run gate with risk-sized notional
+                risk_result = gate.check(candidate, size)
+                flag = "ALLOW" if risk_result.get("allowed") else "DENY"
+                print(
+                    f"[RISK] {flag} {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
+                    f"size={size} reason={risk_result.get('reason')} (post-size)"
+                )
+                if not bool(risk_result.get("allowed")):
+                    paper_error = f"risk_deny_post_size:{risk_result.get('reason')}"
+                    raise ValueError(paper_error)
+            else:
+                size = max_notional
+                print(
+                    f"[SIZE] risk_usd={risk_usd} atr_pct=n/a notional={size} "
+                    f"(fallback MAX_NOTIONAL_USD; levels missing)"
+                )
+
             book = paper_book or PaperBook(gate=gate)
             if paper_book is not None and book.gate is None:
                 book.gate = gate
@@ -146,10 +183,12 @@ def evaluate_candidate(
                 "rsi": candidate.get("rsi"),
                 "action": action,
                 "rationale": agent_out.get("rationale"),
+                "provisional_size_usd": provisional_size,
+                "risk_usd": risk_usd,
             }
             if levels is not None:
                 open_meta.update(levels)
-            position_id = open_paper(
+            position_id = open_position(
                 symbol=str(candidate.get("symbol")),
                 side=side,
                 size_usd=size,
@@ -178,7 +217,7 @@ def evaluate_candidate(
         "rsi": candidate.get("rsi"),
         "agent": {
             "action": action,
-            "size_usd": size,
+            "size_usd": provisional_size,
             "side": agent_out.get("side"),
             "rationale": agent_out.get("rationale"),
             "rules_fired": list(agent_out.get("rules_fired") or []),

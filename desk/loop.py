@@ -260,6 +260,19 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
     cfg = cfg or load_config()
     clog = CandidateLog(cfg.candidates_path)
     gate = RiskGate()
+    try:
+        from exec.paper import list_open
+
+        n = gate.sync_opens_from_paper(list_open())
+        print(f"[RISK] synced opens from paper: {n}")
+    except Exception as _sync_exc:  # noqa: BLE001
+        print(f"[RISK] sync opens skipped: {_sync_exc}")
+    try:
+        from exec.hub_balance import sync_paper_account_from_hub
+
+        sync_paper_account_from_hub()
+    except Exception as _hub_sync_exc:  # noqa: BLE001
+        print(f"[HUB] sync paper from hub skipped: {_hub_sync_exc}")
     mode = "ONCE" if cfg.once else f"POLL/{cfg.poll_sec}s"
     cache: UniverseCache | None = None
     if cfg.scan_mode == "auto":
@@ -279,6 +292,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
         run_pass(cfg, clog, gate, symbols=symbols)
         try:
             check_open_exits(
+                gate=gate,
                 cfg=exit_cfg,
                 timeframe=cfg.timeframe,
                 ohlcv_limit=min(80, max(50, cfg.ohlcv_limit)),
