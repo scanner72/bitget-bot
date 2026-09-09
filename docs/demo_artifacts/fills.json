@@ -1,0 +1,41 @@
+{
+    "fills":  [
+                  {
+                      "ts":  "2026-09-08T16:09:55.874747+00:00",
+                      "fill_id":  "fill_790d9f5df797",
+                      "position_id":  "pos_abf778d678d2",
+                      "event":  "open",
+                      "symbol":  "BTC/USDT:USDT",
+                      "side":  "long",
+                      "size_usd":  50.0,
+                      "qty":  0.0007692307692307692,
+                      "price":  65000.0,
+                      "realized_pnl":  0.0,
+                      "meta":  {
+                                   "type":  "BULLISH_DIV",
+                                   "rsi":  42.0,
+                                   "action":  "ENTER",
+                                   "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
+                               }
+                  },
+                  {
+                      "ts":  "2026-09-08T17:23:16.249630+00:00",
+                      "fill_id":  "fill_bdf6d460a46a",
+                      "position_id":  "pos_b1c37481162d",
+                      "event":  "open",
+                      "symbol":  "BTC/USDT:USDT",
+                      "side":  "long",
+                      "size_usd":  50.0,
+                      "qty":  0.0007692307692307692,
+                      "price":  65000.0,
+                      "realized_pnl":  0.0,
+                      "meta":  {
+                                   "type":  "BULLISH_DIV",
+                                   "rsi":  42.0,
+                                   "action":  "ENTER",
+                                   "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
+                               }
+                  }
+              ],
+    "count":  2
+}

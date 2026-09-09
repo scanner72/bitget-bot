@@ -1,0 +1,230 @@
+"""Candidate -> agent.decide -> risk check -> paper fill -> decision JSONL."""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from agent.decide import decide
+from exec.paper import PaperBook, open_paper
+from ingest.symbols import to_display
+from risk.gate import RiskGate
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DECISIONS_PATH = ROOT / "data" / "decisions.jsonl"
+
+
+def _env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None or str(v).strip() == "":
+        return default
+    try:
+        return float(v)
+    except ValueError:
+        return default
+
+
+def default_proposed_size_usd() -> float:
+    """Prefer PROPOSED_SIZE_USD, else clamp to MAX_NOTIONAL_USD default 100."""
+    size = _env_float("PROPOSED_SIZE_USD", 0.0)
+    if size > 0:
+        return size
+    return _env_float("MAX_NOTIONAL_USD", 100.0)
+
+
+def append_decision(
+    record: dict[str, Any],
+    path: Path | str | None = None,
+) -> None:
+    out = Path(path) if path else DEFAULT_DECISIONS_PATH
+    out.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    with out.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+append_risk_decision = append_decision
+
+
+def evaluate_candidate(
+    candidate: dict[str, Any],
+    gate: RiskGate,
+    *,
+    proposed_size_usd: float | None = None,
+    decisions_path: Path | str | None = None,
+    context: dict[str, Any] | None = None,
+    paper_book: PaperBook | None = None,
+) -> dict[str, Any]:
+    """decide -> risk.check -> (ENTER+allow) open_paper -> print + JSONL.
+
+    Paper-only: never places live Bitget orders.
+    """
+    ctx = dict(context or {})
+    if proposed_size_usd is not None:
+        ctx["proposed_size_usd"] = float(proposed_size_usd)
+
+    agent_out = decide(candidate, ctx)
+    action = str(agent_out.get("action", "SKIP")).upper()
+    size = float(agent_out.get("size_usd") or 0.0)
+    if size <= 0 and action in {"ENTER", "REDUCE"}:
+        size = default_proposed_size_usd()
+        agent_out = {**agent_out, "size_usd": size}
+
+    _sym = str(candidate.get("symbol") or "")
+    _sym_disp = to_display(_sym) if _sym else ""
+    print(
+        f"[AGENT] {action} {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
+        f"side={agent_out.get('side')} size={size} "
+        f"rationale={agent_out.get('rationale')} "
+        f"rules={agent_out.get('rules_fired')}"
+    )
+
+    risk_result: dict[str, Any] | None = None
+    if action in {"ENTER", "REDUCE"}:
+        risk_result = gate.check(candidate, size)
+        flag = "ALLOW" if risk_result.get("allowed") else "DENY"
+        print(
+            f"[RISK] {flag} {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
+            f"size={size} reason={risk_result.get('reason')}"
+        )
+
+    fill_id: str | None = None
+    position_id: str | None = None
+    paper_error: str | None = None
+
+    if (
+        action == "ENTER"
+        and risk_result is not None
+        and bool(risk_result.get("allowed"))
+    ):
+        try:
+            price = float(candidate.get("price") or 0)
+            side = str(agent_out.get("side") or "long")
+            if price <= 0:
+                raise ValueError("candidate price missing/invalid for paper open")
+            # ATR SL/TP sizing + volatility filter (divergent defaults)
+            from risk.atr import atr_filter_ok, compute_levels_from_df
+
+            levels = None
+            ohlcv_df = ctx.get("ohlcv_df")
+            if ohlcv_df is None:
+                try:
+                    from ingest.bitget_ohlcv import fetch_ohlcv
+
+                    tf = str(ctx.get("timeframe") or candidate.get("timeframe") or "15m")
+                    ohlcv_df = fetch_ohlcv(
+                        symbol=str(candidate.get("symbol")),
+                        timeframe=tf,
+                        limit=int(ctx.get("ohlcv_limit") or 50),
+                    )
+                except Exception as _atr_exc:  # noqa: BLE001
+                    print(f"[ATR] WARN fetch failed: {_atr_exc}")
+                    ohlcv_df = None
+            if ohlcv_df is not None:
+                levels = compute_levels_from_df(price, side, ohlcv_df)
+            if levels is not None:
+                import os as _os
+                _amin = float(_os.getenv("ATR_PCT_MIN", "0.3") or "0.3")
+                _amax = float(_os.getenv("ATR_PCT_MAX", "6.0") or "6.0")
+                ok_atr, atr_reason = atr_filter_ok(
+                    levels["atr"], price, min_pct=_amin, max_pct=_amax
+                )
+                if not ok_atr:
+                    paper_error = atr_reason
+                    print(f"[ATR] SKIP open {candidate.get('symbol')}: {atr_reason}")
+                    levels = None
+                    # Treat as paper skip (no open)
+                    raise ValueError(f"atr_filter:{atr_reason}")
+            book = paper_book or PaperBook(gate=gate)
+            if paper_book is not None and book.gate is None:
+                book.gate = gate
+            open_meta = {
+                "type": candidate.get("type"),
+                "rsi": candidate.get("rsi"),
+                "action": action,
+                "rationale": agent_out.get("rationale"),
+            }
+            if levels is not None:
+                open_meta.update(levels)
+            position_id = open_paper(
+                symbol=str(candidate.get("symbol")),
+                side=side,
+                size_usd=size,
+                price=price,
+                meta=open_meta,
+                gate=gate,
+                book=book,
+            )
+            # Latest open fill id from the position record
+            opens = book.list_open()
+            match = next(
+                (p for p in opens if p.get("position_id") == position_id),
+                None,
+            )
+            fill_id = (match or {}).get("open_fill_id")
+        except Exception as exc:  # noqa: BLE001
+            paper_error = f"{type(exc).__name__}: {exc}"
+            print(f"[PAPER] ERROR open failed: {paper_error}")
+
+    now = datetime.now(timezone.utc)
+    rec = {
+        "ts": now.isoformat(),
+        "symbol": candidate.get("symbol"),
+        "type": candidate.get("type"),
+        "price": candidate.get("price"),
+        "rsi": candidate.get("rsi"),
+        "agent": {
+            "action": action,
+            "size_usd": size,
+            "side": agent_out.get("side"),
+            "rationale": agent_out.get("rationale"),
+            "rules_fired": list(agent_out.get("rules_fired") or []),
+        },
+        "risk": (
+            {
+                "allowed": bool(risk_result.get("allowed")),
+                "reason": risk_result.get("reason"),
+                "proposed_size_usd": size,
+            }
+            if risk_result is not None
+            else None
+        ),
+        "fill_id": fill_id,
+        "position_id": position_id,
+        "paper_error": paper_error,
+        "action": action,
+        "allowed": (bool(risk_result.get("allowed")) if risk_result else None),
+        "reason": (risk_result.get("reason") if risk_result else agent_out.get("rationale")),
+        "proposed_size_usd": size,
+    }
+    append_decision(rec, decisions_path)
+    return {
+        "agent": agent_out,
+        "risk": risk_result,
+        "decision_record": rec,
+        "action": action,
+        "allowed": rec["allowed"],
+        "reason": rec["reason"],
+        "fill_id": fill_id,
+        "position_id": position_id,
+        "paper_error": paper_error,
+    }
+
+
+def evaluate_candidate_risk(
+    candidate: dict[str, Any],
+    gate: RiskGate,
+    *,
+    proposed_size_usd: float | None = None,
+    decisions_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Back-compat wrapper: full decide+risk+paper chain (same as evaluate_candidate)."""
+    return evaluate_candidate(
+        candidate,
+        gate,
+        proposed_size_usd=proposed_size_usd,
+        decisions_path=decisions_path,
+    )

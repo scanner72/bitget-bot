@@ -1,0 +1,33 @@
+{
+    "decisions":  [
+                      {
+                          "ts":  "2026-09-08T16:03:45.282749+00:00",
+                          "symbol":  "BTC/USDT:USDT",
+                          "type":  "BULLISH_DIV",
+                          "price":  65000.0,
+                          "rsi":  45.0,
+                          "agent":  {
+                                        "action":  "ENTER",
+                                        "size_usd":  100.0,
+                                        "side":  "long",
+                                        "rationale":  "long ENTER on BULLISH_DIV rsi=45.0 size=100.00",
+                                        "rules_fired":  [
+                                                            "type:BULLISH_DIV",
+                                                            "bias_long",
+                                                            "size_fixed",
+                                                            "enter"
+                                                        ]
+                                    },
+                          "risk":  {
+                                       "allowed":  true,
+                                       "reason":  "ok",
+                                       "proposed_size_usd":  100.0
+                                   },
+                          "action":  "ENTER",
+                          "allowed":  true,
+                          "reason":  "ok",
+                          "proposed_size_usd":  100.0
+                      }
+                  ],
+    "count":  1
+}

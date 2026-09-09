@@ -1,0 +1,16 @@
+[project]
+name = "bitget-bot"
+version = "0.1.0"
+description = "Bitget S2 Divergent Agent Desk (paper scaffold)"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+  "ccxt",
+  "fastapi",
+  "uvicorn",
+  "python-dotenv",
+]
+
+[tool.setuptools.packages.find]
+include = ["signals*", "ingest*", "desk*", "agent*", "risk*", "exec*", "api*"]

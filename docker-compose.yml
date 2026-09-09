@@ -1,0 +1,32 @@
+# Bitget S2 Divergent Agent Desk — paper-only local stack
+# Public Bitget OHLCV only; no exchange secrets required for smoke/demo.
+services:
+  api:
+    build: .
+    container_name: bitget-desk-api
+    command: ["python", "scripts/run_api.py"]
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      PAPER: "true"
+      HOST: "0.0.0.0"
+      PORT: "8080"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  desk:
+    build: .
+    container_name: bitget-desk-loop
+    command: ["python", "scripts/run_signal_loop.py", "--poll"]
+    env_file:
+      - .env
+    environment:
+      PAPER: "true"
+      ONCE: "0"
+      POLL_SEC: "60"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

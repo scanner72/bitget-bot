@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.idea
+.vscode
+.env
+data/
+_xfer/
+*.db
+*.sqlite3
+_scaffold*.py

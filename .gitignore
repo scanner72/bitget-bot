@@ -1,0 +1,16 @@
+﻿.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+*.db
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+_scaffold*.py
+_xfer/
+*.bak
+.poll*
