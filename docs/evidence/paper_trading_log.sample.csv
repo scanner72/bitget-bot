@@ -1,0 +1,8 @@
+timestamp,trading_pair,direction,price,quantity,account_balance_change,status,mode,event,size_usd,realized_pnl,cash_change,cash_after,equity_after,fill_id,position_id,label,source,signal_type,exit_status
+2026-09-10T12:00:00+00:00,BTC/USDT:USDT,long,65000,0.007692307692,0,filled,hub_demo,open,500,0,-500,9500,10000,fill_sim_btc_open,pos_sim_btc,SIMULATED_DEMO,hub_demo,BULLISH_DIV,
+2026-09-10T14:30:00+00:00,BTC/USDT:USDT,long,65650,0.007692307692,5,filled,hub_demo,close,500,5,505,10005,10005,fill_sim_btc_close,pos_sim_btc,SIMULATED_DEMO,hub_demo,BULLISH_DIV,tp1_trail
+2026-09-11T08:15:00+00:00,ETH/USDT:USDT,short,3200,0.0625,0,filled,hub_demo,open,200,0,-200,9805,10005,fill_sim_eth_open,pos_sim_eth,SIMULATED_DEMO,hub_demo,BEARISH_DIV,
+2026-09-11T11:45:00+00:00,ETH/USDT:USDT,short,3168,0.0625,2,filled,hub_demo,close,200,2,202,10007,10007,fill_sim_eth_close,pos_sim_eth,SIMULATED_DEMO,hub_demo,BEARISH_DIV,tp2
+2026-09-12T09:00:00+00:00,SOL/USDT:USDT,long,140,1.071428571429,0,filled,paper_live,open,150,0,-150,9857,10007,fill_sim_sol_open,pos_sim_sol,SIMULATED_DEMO,paper_live,LEVEL_CROSS_DOWN,
+2026-09-12T10:20:00+00:00,SOL/USDT:USDT,long,137.2,1.071428571429,-3,filled,paper_live,close,150,-3,147,10004,10004,fill_sim_sol_close,pos_sim_sol,SIMULATED_DEMO,paper_live,LEVEL_CROSS_DOWN,sl
+2026-09-12T16:00:00+00:00,DOGE/USDT:USDT,long,0.16,500,0,filled,hub_demo,open,80,0,-80,9924,10004,fill_sim_doge_open,pos_sim_doge,SIMULATED_DEMO,hub_demo,BULLISH_DIV,

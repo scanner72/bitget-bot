@@ -5,7 +5,7 @@
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md)
+**[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md) · [Evidence log](docs/evidence/paper_trading_log.csv)
 
 Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI / level-cross signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
 
@@ -116,6 +116,23 @@ Details: [docs/api-reference.md](docs/api-reference.md).
 
 ---
 
+## Evidence (Track 1 paper / Demo log)
+
+Bitget S2 Trading Agent checklist: timestamp, trading pair, direction, price, quantity, account balance change (plus status / mode).
+
+| File | Role |
+|------|------|
+| [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv) | Public Demo/paper log (**not live mainnet**) |
+| [`docs/evidence/README.md`](docs/evidence/README.md) | Field map + how to regenerate |
+| [`docs/evidence/paper_trading_log.sample.csv`](docs/evidence/paper_trading_log.sample.csv) | `SIMULATED_DEMO` snapshot from native fills |
+
+```bash
+python scripts/export_paper_log.py                  # from local data/paper_fills.jsonl
+python scripts/export_paper_log.py --from-sample    # offline fixture, no keys
+```
+
+---
+
 ## Layout
 
 | Path | Role |
@@ -130,6 +147,7 @@ Details: [docs/api-reference.md](docs/api-reference.md).
 | `scripts/smoke_*.py` | Smokes |
 | `docs/DEMO.md` | 2–3 min recording script |
 | `docs/SUBMISSION.md` | GitHub / video / X / form checklist |
+| `docs/evidence/` | Paper / Demo trading log (Track 1) |
 
 Compose services: `api` (`bitget-desk-api`) and `desk` (`bitget-desk-loop`), volume `./data`.
 
@@ -139,6 +157,7 @@ Compose services: `api` (`bitget-desk-api`) and `desk` (`bitget-desk-loop`), vol
 
 - Video: [docs/DEMO.md](docs/DEMO.md)
 - Submit checklist: [docs/SUBMISSION.md](docs/SUBMISSION.md)
+- Paper / Demo log: [docs/evidence/paper_trading_log.csv](docs/evidence/paper_trading_log.csv)
 - Agent notes: [docs/CURSOR_HANDOFF.md](docs/CURSOR_HANDOFF.md)
 - Handbook: [bitget-ai.gitbook.io/bitgetai_hackathons2](https://bitget-ai.gitbook.io/bitgetai_hackathons2)
 

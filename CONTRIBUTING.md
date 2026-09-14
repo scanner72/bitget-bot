@@ -22,6 +22,8 @@ There is no `tests/` package. Run the offline smokes:
 
 Hub/Demo scripts (`smoke_bitget.py`, `smoke_hub_demo.py`) need local Demo keys — do not add them to CI.
 
+Paper / Demo trading log for judges: `python scripts/export_paper_log.py --from-sample` → `docs/evidence/`. Do not commit `.env` or `data/`.
+
 ## Rules
 
 - Do not bypass `risk/gate.py`.
