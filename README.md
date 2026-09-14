@@ -100,7 +100,7 @@ Offline smokes: `.\test.ps1` or `./test.sh`. Hub/Demo smokes need keys: `scripts
 
 | Method | Path | Body |
 |--------|------|------|
-| GET | `/health` | `{ ok, paper, exec_mode, hub_demo, bitget_demo, hub_sync_exchange_sl, paper_fallback }` |
+| GET | `/health` | `{ ok, paper, exec_mode, hub_demo, bitget_demo, hub_sync_exchange_sl, paper_fallback, agent_mode, openai_model }` |
 | GET | `/positions` | `{ positions, count, source, total_unrealized_pnl, … }` |
 | GET | `/account` · `/equity` | Paper snapshot + Demo equity overlay when `hub_demo` |
 | GET | `/decisions?limit=50` | `{ decisions, count }` from `data/decisions.jsonl` |

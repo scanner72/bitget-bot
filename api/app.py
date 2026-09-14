@@ -357,6 +357,8 @@ def health() -> dict[str, Any]:
         "paper_fallback": (os.getenv("PAPER_FALLBACK") or "1").strip().lower()
         not in {"0", "false", "no", "off"}
         and mode == "hub_demo",
+        "agent_mode": _agent_mode_name(),
+        "openai_model": _agent_model_name(),
     }
 
 
@@ -496,6 +498,55 @@ def chart_data(
 def candidates(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
     rows = _enrich_rows(_tail_jsonl(DATA / "candidates.jsonl", limit))
     return {"candidates": rows, "count": len(rows)}
+
+
+def _agent_mode_name() -> str:
+    from agent.decide import _agent_mode
+
+    return _agent_mode()
+
+
+def _agent_model_name() -> str:
+    if _agent_mode_name() != "llm":
+        return ""
+    return (os.getenv("OPENAI_MODEL") or "").strip()
+
+
+def _decision_rules(d: dict[str, Any]) -> list[str]:
+    agent = d.get("agent") if isinstance(d.get("agent"), dict) else {}
+    rf = agent.get("rules_fired") if agent.get("rules_fired") is not None else d.get("rules_fired")
+    if isinstance(rf, str):
+        return [rf] if rf else []
+    if isinstance(rf, list):
+        return [str(x) for x in rf if x is not None and str(x).strip()]
+    return []
+
+
+def _decision_agent_kind(d: dict[str, Any]) -> str:
+    rf = _decision_rules(d)
+    if "llm_fallback" in rf:
+        return "fallback"
+    if "llm" in rf:
+        return "llm"
+    return "rules"
+
+
+def _decision_rationale(d: dict[str, Any], *, limit: int = 160) -> str:
+    agent = d.get("agent") if isinstance(d.get("agent"), dict) else {}
+    text = agent.get("rationale") or d.get("rationale") or d.get("reason") or ""
+    text = " ".join(str(text).split())
+    if len(text) > limit:
+        return text[: limit - 1] + "…"
+    return text
+
+
+def _agent_kind_badge(kind: str) -> str:
+    k = str(kind or "rules")
+    if k == "llm":
+        return '<span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span>'
+    if k == "fallback":
+        return '<span class="tag warn" title="LLM failed; rules took over">FALLBACK</span>'
+    return '<span class="tag" title="Deterministic rules">RULES</span>'
 
 
 def _html_escape(s: Any) -> str:
@@ -656,7 +707,7 @@ def _pos_rows_html(open_pos: list[dict[str, Any]]) -> str:
 
 def _dec_rows_html(decs: list[dict[str, Any]]) -> str:
     if not decs:
-        return "<tr><td colspan='5'><em>none</em></td></tr>"
+        return "<tr><td colspan='7'><em>none</em></td></tr>"
     rows = ""
     for d in reversed(decs):
         agent = d.get("agent") if isinstance(d.get("agent"), dict) else {}
@@ -666,13 +717,17 @@ def _dec_rows_html(decs: list[dict[str, Any]]) -> str:
             allowed = d["risk"].get("allowed")
         ts = str(d.get("ts") or "")
         ts_short = ts[11:19] if len(ts) >= 19 else ts
+        kind = _decision_agent_kind(d)
+        why = _decision_rationale(d)
         rows += (
             "<tr>"
             f"<td class='mono'>{_html_escape(ts_short)}</td>"
             f"<td>{_html_escape(d.get('symbol_display') or d.get('symbol'))}<br/><span class='sub'>{_html_escape(d.get('symbol_id') or '')}</span></td>"
             f"<td>{_html_escape(d.get('type'))}</td>"
+            f"<td>{_agent_kind_badge(kind)}</td>"
             f"<td>{_action_badge(action)}</td>"
             f"<td>{_allowed_badge(allowed)}</td>"
+            f"<td class='sub' title='{_html_escape(why)}'>{_html_escape(why) or '—'}</td>"
             "</tr>"
         )
     return rows
@@ -759,8 +814,25 @@ def desk_live_state() -> dict[str, Any]:
     open_n = len(open_pos)
     hist_n = len(hist_trades)
     dec_n = len(decs)
+    agent_mode = _agent_mode_name()
+    agent_model = _agent_model_name()
+    kind_counts = {"llm": 0, "fallback": 0, "rules": 0}
+    for row in decs:
+        k = _decision_agent_kind(row)
+        kind_counts[k] = kind_counts.get(k, 0) + 1
+    agent_chip_cls = "warn" if kind_counts["fallback"] else ("accent" if agent_mode == "llm" else "")
+    agent_chip = f'<span class="chip {agent_chip_cls}">agent: {_html_escape(agent_mode)}</span>'
+    model_chip = (
+        f'<span class="chip">{_html_escape(agent_model)}</span>' if agent_model else ""
+    )
+    fallback_chip = (
+        f'<span class="chip warn">llm fallback: {kind_counts["fallback"]}/{dec_n or 0}</span>'
+        if kind_counts["fallback"]
+        else ""
+    )
     chips = (
         f'<span class="chip accent">mode: {_html_escape(mode)}</span>'
+        f"{agent_chip}{model_chip}{fallback_chip}"
         f'<span class="chip ok">source: {_html_escape(src)}</span>'
         '<span class="chip ok">paper shadow: on</span>'
         f'<span class="chip {"ok" if hub_sync else "warn"}">sync SL: {_html_escape(str(hub_sync).lower())}</span>'
@@ -785,6 +857,24 @@ def desk_live_state() -> dict[str, Any]:
         f"max_daily_loss_usd={_html_escape(risk.get('max_daily_loss_usd'))}<br/>"
         f"date={_html_escape(risk.get('daily_date') or '-')}"
     )
+    if agent_mode == "llm" and kind_counts["llm"] and not kind_counts["fallback"]:
+        agent_hint = "LLM answering (rules_fired includes llm)"
+        agent_hint_class = "risk-ok"
+    elif agent_mode == "llm" and kind_counts["fallback"]:
+        agent_hint = "LLM errors → rules fallback"
+        agent_hint_class = "risk-bad"
+    elif agent_mode == "llm":
+        agent_hint = "LLM on — waiting for the next candidate"
+        agent_hint_class = "risk-ok"
+    else:
+        agent_hint = "Rules path (AGENT_MODE=rules)"
+        agent_hint_class = "risk-ok"
+    agent_meta = (
+        f"mode={_html_escape(agent_mode)}<br/>"
+        f"model={_html_escape(agent_model or '—')}<br/>"
+        f"last {dec_n}: llm={kind_counts['llm']} "
+        f"fallback={kind_counts['fallback']} rules={kind_counts['rules']}"
+    )
     return {
         "pos_rows": _pos_rows_html(open_pos),
         "hist_rows": _hist_rows_html(hist_trades),
@@ -798,6 +888,9 @@ def desk_live_state() -> dict[str, Any]:
         "risk_class": risk_class,
         "risk_hint": _html_escape(risk.get("hint")),
         "risk_meta": risk_meta,
+        "agent_hint": _html_escape(agent_hint),
+        "agent_hint_class": agent_hint_class,
+        "agent_meta": agent_meta,
         "pos_head": f"Open positions ({open_n}) · click for LIVE chart",
         "hist_head": f"Trade history ({hist_n}) · click for LIVE chart",
         "dec_head": f"Decision timeline ({dec_n})",
@@ -827,6 +920,9 @@ def dashboard() -> str:
     risk_class = live["risk_class"]
     risk_hint = live["risk_hint"]
     risk_meta = live["risk_meta"]
+    agent_hint = live["agent_hint"]
+    agent_hint_class = live["agent_hint_class"]
+    agent_meta = live["agent_meta"]
     pos_head = live["pos_head"]
     hist_head = live["hist_head"]
     dec_head = live["dec_head"]
@@ -932,7 +1028,7 @@ def dashboard() -> str:
     .tag.short {{ color:#f3c4c4; border-color:#7a3535; background:#311919; }}
     .tag.ok {{ color:#c4f1dc; border-color:#2c6f56; background:#123528; }}
     .tag.bad {{ color:#f3c4c4; border-color:#7a3535; background:#311919; }}
-    .tag.warn {{ color:#f8e5be; border-color:#73501f; background:#2b2112; }}
+    .tag.llm {{ color:#cfe4ff; border-color:#245ea8; background:#13315a; }}
     .footer {{ color:var(--muted); font-size:.78rem; margin-top:10px; }}
     .hint {{ color:var(--muted); font-size:.74rem; margin:0 0 10px; }}
     a {{ color:#6daefc; text-decoration:none; }}
@@ -1004,7 +1100,7 @@ def dashboard() -> str:
             <div class="panel-head" id="head-decisions">{_html_escape(dec_head)}</div>
             <div class="panel-body table-wrap">
               <table style="min-width:640px;">
-                <thead><tr><th>ts</th><th>symbol</th><th>type</th><th>action</th><th>allowed</th></tr></thead>
+                <thead><tr><th>ts</th><th>symbol</th><th>type</th><th>agent</th><th>action</th><th>allowed</th><th>why</th></tr></thead>
                 <tbody id="tbody-decisions">{dec_rows}</tbody>
               </table>
             </div>
@@ -1019,6 +1115,16 @@ def dashboard() -> str:
             <div class="kpi" id="account-kpi">{account_kpi}</div>
             <div class="meta" id="account-meta">
               {account_meta}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="agent">
+          <div class="panel-head">Agent / LLM</div>
+          <div class="panel-body">
+            <div id="agent-hint" class="{agent_hint_class}">{agent_hint}</div>
+            <div class="meta" id="agent-meta" style="margin-top:8px;">
+              {agent_meta}
             </div>
           </div>
         </div>
@@ -1104,6 +1210,10 @@ def dashboard() -> str:
         var rh = document.getElementById('risk-hint');
         if (rh && data.risk_class) rh.className = data.risk_class;
         patchHtml('risk-meta', data.risk_meta);
+        patchHtml('agent-hint', data.agent_hint);
+        var ah = document.getElementById('agent-hint');
+        if (ah && data.agent_hint_class) ah.className = data.agent_hint_class;
+        patchHtml('agent-meta', data.agent_meta);
         patchHtml('tbody-positions', data.pos_rows);
         patchHtml('tbody-history', data.hist_rows);
         patchHtml('tbody-decisions', data.dec_rows);

@@ -109,10 +109,25 @@ def test_chart_href() -> None:
     _assert("exit=3950" in href, href)
 
 
+def test_decision_agent_kind() -> None:
+    from api.app import _agent_kind_badge, _decision_agent_kind, _decision_rationale
+
+    llm = {"agent": {"rules_fired": ["llm"], "rationale": "RSI at 44.5 indicates weak momentum"}}
+    fb = {"agent": {"rules_fired": ["llm_fallback", "enter"], "rationale": "long ENTER (llm_fallback: timeout)"}}
+    rules = {"agent": {"rules_fired": ["bias_long", "enter"]}}
+    _assert(_decision_agent_kind(llm) == "llm", llm)
+    _assert(_decision_agent_kind(fb) == "fallback", fb)
+    _assert(_decision_agent_kind(rules) == "rules", rules)
+    _assert("LLM" in _agent_kind_badge("llm"), "badge")
+    _assert("FALLBACK" in _agent_kind_badge("fallback"), "badge")
+    _assert("weak momentum" in _decision_rationale(llm), llm)
+
+
 def main() -> int:
     test_chart_payload()
     test_closed_trades()
     test_chart_href()
+    test_decision_agent_kind()
     print("smoke_chart: ok")
     return 0
 
