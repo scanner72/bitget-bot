@@ -292,6 +292,11 @@ def main() -> int:
             _assert("divergent_v1" not in blob, rec)
             _assert("divergent_paper_trades" not in blob, rec)
 
+        for rec in desk_native:
+            if str(rec.get("symbol") or "").startswith("BTC/"):
+                px = float(rec.get("price") or 0)
+                _assert(abs(px - 65000.0) > 1e-6, f"dummy smoke BTC price leaked: {rec}")
+
         desk_csv = tmp_path / "desk.csv"
         desk_jsonl = tmp_path / "desk.jsonl"
         rc_desk = subprocess.run(
@@ -330,6 +335,13 @@ def main() -> int:
         committed_ids = [r["fill_id"] for r in committed]
         desk_ids = [r["fill_id"] for r in desk_rows]
         _assert(committed_ids == desk_ids, (committed_ids[:3], desk_ids[:3]))
+        _assert(
+            not any(
+                r["trading_pair"].startswith("BTC/") and abs(float(r["price"]) - 65000.0) < 1e-6
+                for r in committed
+            ),
+            "committed log still has dummy BTC@65000 smoke fills",
+        )
 
         fills, _dec, label, origin = mod.resolve_inputs(
             fills_path=None,
