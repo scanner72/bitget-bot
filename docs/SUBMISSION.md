@@ -2,86 +2,78 @@
 
 **Deadline:** 21 Sep (confirm on official Bitget hackathon page / Discord if shifted).  
 **Track:** Agent Trading / Divergent Agent Desk  
-**Mode:** Paper-only (`PAPER=true`). No live orders in this submission path.
+**Mode:** `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0` — Bitget UTA Demo (`paptrading`) + paper shadow. **Not live mainnet.**
 
 ---
 
 ## Repo
 
-- [ ] GitHub remote **TBD** — replace placeholder after `git remote add` / push:
-  - `https://github.com/_________________/bitget-bot`
-- [ ] Repo is **public** for judges
-- [ ] `.env` **not** committed (secrets / empty keys only in `.env.example`)
-- [ ] README has EN+RU pitch, architecture, quickstart, API table
-- [ ] Docker packaging present: `Dockerfile`, `docker-compose.yml` (optional for demo, useful for judges)
-- [ ] Links from README → [`docs/DEMO.md`](DEMO.md) + this file
+- [ ] GitHub public: `https://github.com/scanner72/bitget-bot` (or your fork)
+- [ ] `.env` **not** committed (Demo keys only in local env / `.env.example` placeholders)
+- [ ] README EN+RU pitch, architecture, hub_demo quickstart, API table
+- [ ] Docker: `Dockerfile`, `docker-compose.yml` (optional for judges)
+- [ ] Links: [`docs/DEMO.md`](DEMO.md) + this file + [`docs/CURSOR_HANDOFF.md`](CURSOR_HANDOFF.md)
 
 ---
 
 ## Demo video (2–5 min)
 
-- [ ] Record locally (OBS / Xbox Game Bar / etc.) using [`docs/DEMO.md`](DEMO.md) script
-- [ ] Show: pitch → `smoke_bitget` → `run_signal_loop --once` → `http://127.0.0.1:8080` (`/health`, `/positions`, `/decisions`)
-- [ ] Say clearly: **paper-only**, Agent Trading track, Docker optional
-- [ ] Upload (YouTube / Loom / Drive unlisted OK if judges can open)
-- [ ] Paste URL: `https://_________________`
+- [ ] Record using [`docs/DEMO.md`](DEMO.md)
+- [ ] Show: pitch → `smoke_bitget` + `smoke_hub_demo` → `run_signal_loop --once` → `:8080` (`/health`, `/positions`, `/decisions`)
+- [ ] Say clearly: **Bitget Demo UTA**, not live mainnet; Agent Trading track; Docker optional
+- [ ] Upload URL: `https://_________________`
 
-Static artifacts for screenshots: `docs/demo_artifacts/` (`health.json`, `positions.json`, `decisions.json`, `fills.json`, `snapshot.html`).
+Artifacts: `docs/demo_artifacts/` (`health.json`, `positions.json`, …).
 
 ---
 
 ## X / Twitter post (template)
 
-Copy, fill links & handles, then post:
-
 ```
-Built a paper-only Divergent Agent Desk for @Bitget #Bitget #AgentTrading #BitgetHackathon
+Built a Divergent Agent Desk for @Bitget #Bitget #AgentTrading #BitgetHackathon
 
-Public OHLCV → RSI-momentum divergence → rules agent → risk gate → paper fills → FastAPI dashboard.
+Public OHLCV → RSI divergence → rules agent → risk gate → Bitget Demo UTA (hub_demo) + dashboard :8080
 
-Repo: https://github.com/_________________/bitget-bot
+Repo: https://github.com/scanner72/bitget-bot
 Demo: https://_________________
-DEMO script: docs/DEMO.md
 
 #Web3 #TradingBot #Hackathon
 ```
 
-RU variant (optional quote-tweet / reply):
+RU variant:
 
 ```
-Paper-only agent desk для Bitget S2 (Agent Trading): публичный OHLCV → дивергенции → rules + risk → paper fills → дашборд :8080.
+Agent desk для Bitget S2: публичный OHLCV → сигналы → rules + risk → Bitget Demo UTA (не live mainnet) → дашборд :8080.
 
-Репо: https://github.com/_________________/bitget-bot
+Репо: https://github.com/scanner72/bitget-bot
 Видео: https://_________________
 ```
 
-- [ ] Post published: `https://x.com/_________________/status/_________________`
-- [ ] Hashtags used: `#Bitget` `#AgentTrading` (+ event tags if announced)
+- [ ] Post: `https://x.com/_________________/status/_________________`
 
 ---
 
 ## Technical smoke (before submit)
 
-- [ ] `PAPER=true`
-- [ ] Smokes: `smoke_signal` → `smoke_bitget` → `smoke_risk` → `smoke_decide` → `smoke_llm_decide` → `smoke_paper`
+- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`
+- [ ] Smokes: `smoke_signal` → `smoke_bitget` → `smoke_hub_demo` → `smoke_risk` → `smoke_decide` → `smoke_paper`
 - [ ] Desk once: `python scripts/run_signal_loop.py --once`
-- [ ] API: `GET /health` → `{"ok":true,"paper":true}` (start: `.venv\Scripts\python.exe -u scripts\run_api.py`, pid → `data/api.pid`)
-- [ ] Dashboard `/` + `/positions` + `/decisions` + `/fills`
-- [ ] Optional: `docker compose up -d` then same URL
+- [ ] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true
+- [ ] Dashboard `/` + `/positions` (Demo PnL) + `/decisions` + `/account` (equity overlay)
+- [ ] Optional: `docker compose up -d`
 
 ---
 
-## Form / portal fields (fill when submitting)
+## Form / portal fields
 
 | Field | Value |
 |-------|--------|
-| Project name | Divergent Agent Desk / Bitget S2 paper desk |
+| Project name | Divergent Agent Desk / Bitget S2 |
 | Track | Agent Trading |
-| GitHub | TBD |
+| GitHub | `https://github.com/scanner72/bitget-bot` |
 | Demo video | TBD |
 | X post | TBD |
-| Contact | (your email / Discord) |
-| Notes | Paper-only; public Bitget OHLCV via ccxt; no private trade keys required |
+| Notes | Bitget Demo UTA via Agent Hub (`paptrading`); public OHLCV via ccxt; live mainnet disabled |
 
 ---
 
@@ -89,9 +81,9 @@ Paper-only agent desk для Bitget S2 (Agent Trading): публичный OHLCV
 
 | Do | Don't |
 |----|-------|
-| Keep `PAPER=true` | Commit real API secrets |
-| Leave overnight `--poll` alone if healthy | Kill poll unless necessary |
-| Link README + DEMO + this checklist | Claim live trading |
-| Refresh `docs/demo_artifacts/` before screenshots | Record secrets on camera |
+| Keep `BITGET_ALLOW_LIVE=0` for demo | Commit API secrets |
+| Use Demo keys in local `.env` only | Show `.env` on camera |
+| Refresh `docs/demo_artifacts/` before screenshots | Claim live mainnet trading |
+| Link README + DEMO + handoff | Kill healthy overnight `--poll` without reason |
 
-**Status:** docs + artifacts prepared for one-pass local recording. Video file itself is **not** produced in-repo (no reliable recorder in automation).
+**Status:** docs aligned with `hub_demo` stack (commit `7473d5a`+). Video not produced in-repo.

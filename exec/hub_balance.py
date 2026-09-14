@@ -1,16 +1,19 @@
 """Overlay Bitget Demo/live UTA equity onto paper snapshots (hub_demo)."""
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
+ANCHOR_PATH = ROOT / "data" / "demo_start_equity.json"
 
 _HUB_MODES = {"hub_demo", "demo", "live", "hub_live"}
-_DEMO_OVERLAY_MODES = {"hub_demo", "demo"}
+_DEMO_OVERLAY_MODES = {"hub_demo", "demo", "live", "hub_live"}
 
 
 def _load_env() -> None:
@@ -35,8 +38,49 @@ def fetch_hub_usdt() -> dict[str, Any] | None:
         return None
 
 
+def demo_start_equity() -> float:
+    """Stable Demo equity anchor for drawdown (not current equity)."""
+    _load_env()
+    raw = (os.getenv("DEMO_START_EQUITY") or "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    if ANCHOR_PATH.exists():
+        try:
+            data = json.loads(ANCHOR_PATH.read_text(encoding="utf-8"))
+            v = float(data.get("start_equity"))
+            if v > 0:
+                return v
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+    start = 10000.0
+    try:
+        start = float(os.getenv("PAPER_START_BALANCE_USD") or 10000.0)
+    except ValueError:
+        start = 10000.0
+    try:
+        ANCHOR_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ANCHOR_PATH.write_text(
+            json.dumps(
+                {
+                    "start_equity": start,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "source": "PAPER_START_BALANCE_USD",
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+    return start
+
+
 def overlay_equity_snapshot(paper_snap: dict) -> dict:
-    """Merge Demo UTA equity into paper account snapshot for UI/API."""
+    """Merge Demo UTA equity into snapshot. Paper kept under `paper` only."""
     if not isinstance(paper_snap, dict):
         paper_snap = {}
     out = dict(paper_snap)
@@ -53,6 +97,8 @@ def overlay_equity_snapshot(paper_snap: dict) -> dict:
     available = float(hub.get("available") or hub.get("balance") or 0.0)
     usdt_equity = float(hub.get("usdt_equity") or equity)
     upnl = float(hub.get("unrealised_pnl") or 0.0)
+    start = demo_start_equity()
+    implied_realized = equity - start - upnl
 
     paper_subset = {
         k: paper_snap.get(k)
@@ -69,14 +115,17 @@ def overlay_equity_snapshot(paper_snap: dict) -> dict:
         if k in paper_snap
     }
 
+    src = "hub_demo" if mode in {"hub_demo", "demo"} else "hub_live"
     demo = {
         "equity": equity,
         "available": available,
         "usdt_equity": usdt_equity,
         "unrealised_pnl": upnl,
+        "start_equity": start,
+        "pnl_vs_start": equity - start,
     }
 
-    out["source"] = "hub_demo"
+    out["source"] = src
     out["hub_account_equity"] = equity
     out["hub_available"] = available
     out["hub_usdt_equity"] = usdt_equity
@@ -87,59 +136,15 @@ def overlay_equity_snapshot(paper_snap: dict) -> dict:
     out["equity_mtm"] = equity
     out["cash"] = available
     out["total_unrealized_pnl"] = upnl
+    out["start_balance"] = start
+    out["realized_pnl"] = implied_realized
+    out["pnl_vs_start"] = equity - start
     out["currency"] = "USDT"
-    # Display start as demo equity when overlaying for UI
-    out["start_balance"] = equity
     out["demo_equity"] = equity
     return out
 
 
 def sync_paper_account_from_hub(account=None) -> dict | None:
-    """Align paper wallet start/cash with Demo available (keep opens/realized)."""
-    if not exec_is_hub():
-        return None
-    _load_env()
-    mode = (os.getenv("EXEC_MODE") or "paper").strip().lower()
-    if mode not in _DEMO_OVERLAY_MODES and mode not in {"hub_live", "live"}:
-        return None
-
-    hub = fetch_hub_usdt()
-    if not hub:
-        return None
-
-    try:
-        from exec.account import PaperAccount, get_account
-    except Exception as exc:  # noqa: BLE001
-        print(f"[HUB] paper load warn: {type(exc).__name__}: {exc}")
-        return None
-
-    acct = account if account is not None else get_account(reload=True)
-    if not isinstance(acct, PaperAccount):
-        acct = get_account(reload=True)
-
-    available = float(hub.get("available") or 0.0)
-    equity = float(hub.get("account_equity") or hub.get("usdt_equity") or 0.0)
-    cash_src = available if available > 0 else equity
-
-    # Prefer recomputing open_notional from paper opens when easy
-    try:
-        from exec.paper import list_open
-
-        opens = list_open() or []
-        open_notional = 0.0
-        for pos in opens:
-            if isinstance(pos, dict):
-                open_notional += float(pos.get("size_usd") or 0.0)
-        acct.open_notional = max(0.0, open_notional)
-    except Exception:
-        pass
-
-    acct.start_balance = equity if equity > 0 else cash_src
-    acct.cash = cash_src
-    acct.currency = "USDT"
-    acct.save()
-
-    print(
-        f"[HUB] synced paper wallet from Demo available={available:.4f} equity={equity:.4f}"
-    )
-    return acct.snapshot()
+    """Disabled: overwriting paper cash/start with Demo hid drawdown and mixed books."""
+    print("[HUB] paper wallet sync skipped (Demo is UI SoT; paper stays shadow)")
+    return None

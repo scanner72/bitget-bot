@@ -1,14 +1,15 @@
 ﻿# DEMO — сценарий записи (2–3 мин) | Bitget S2
 
 **Трек:** Agent Trading / Divergent Agent Desk  
-**Режим:** `PAPER=true` only — без live-ордеров, без приватных ключей Bitget для публичного OHLCV.  
-**Цель записи:** один проход без монтажа: pitch → smoke → loop once → dashboard.
+**Режим:** `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0` — Bitget UTA Demo (`paptrading`) + paper shadow для soft exits/UI.  
+**Цель записи:** один проход без монтажа: pitch → smoke → loop once → dashboard с Demo PnL.
 
 Перед записью (один раз, вне кадра или в начале):
 
 ```powershell
 cd C:\bitget-bot
 .venv\Scripts\activate
+# .env: EXEC_MODE=hub_demo, BITGET_DEMO=1, Demo API keys (не показывать на камере)
 # API (если ещё не слушает 8080):
 .venv\Scripts\python.exe -u scripts\run_api.py
 # Overnight poll (--poll) можно НЕ трогать — оставьте фоновый процесс.
@@ -23,13 +24,13 @@ cd C:\bitget-bot
 
 Говорите по пунктам (RU, можно вкраплениями EN):
 
-1. **Что это:** paper-only agent desk для Bitget S2 — публичный OHLCV → детект RSI-momentum дивергенций → rules-агент (ENTER/SKIP/REDUCE) → risk-gate → paper fills → FastAPI dashboard.
-2. **Трек:** Agent Trading / Divergent Agent Desk. Live-торговля **не** в scope; всё на paper-состоянии в `data/`.
-3. **Стек:** ccxt (Bitget public) → `signals/` → `desk` loop → `agent.decide` → `risk.gate` → `exec.paper` → `api` на `:8080`.
-4. **Риски:** лимиты notional / daily loss kill / max positions / cooldown / one-per-symbol — всё в env, решения в `decisions.jsonl`.
-5. **Docker опционален:** `docker compose up -d` поднимает api + desk; для демо достаточно локального `.venv`.
+1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI/level-cross → rules-агент → risk-gate → **Bitget Demo UTA** market open/close + paper shadow для TP1/BE/trail → FastAPI dashboard.
+2. **Трек:** Agent Trading / Divergent Agent Desk. **Live mainnet не в scope** — только Demo (`paptrading`); `BITGET_ALLOW_LIVE=0`.
+3. **Стек:** public WS candles (`MARKET_DATA_MODE=ws`) + REST bootstrap → `signals/` → `desk` loop → `agent.decide` → `risk.gate` → `exec.router` → `exec.bitget_hub` + `exec.paper` → `api` `:8080` (исполнение остаётся REST).
+4. **Риски:** risk-to-SL sizing (`RISK_USD_PER_TRADE`), exchange SL+TP2 при open, sync SL после TP1; daily loss kill / max positions / cooldown — env + `decisions.jsonl`.
+5. **Docker опционален:** `docker compose up -d`; для записи достаточно `.venv`.
 
-Фраза-якорь: *«Paper only. Публичные свечи Bitget. Полный агентный цикл без live-ордеров.»*
+Фраза-якорь: *«Bitget Demo UTA. Публичные свечи. Полный агентный цикл с exchange SL-парашютом. Live mainnet выключен.»*
 
 ---
 
@@ -37,13 +38,12 @@ cd C:\bitget-bot
 
 ### A. Smoke Bitget (~20–30 с)
 
-В терминале:
-
 ```powershell
 .venv\Scripts\python.exe scripts\smoke_bitget.py
+.venv\Scripts\python.exe scripts\smoke_hub_demo.py
 ```
 
-Показать: публичный OHLCV тянется, символы/таймфрейм ок. (Опционально быстро: `smoke_signal` / `smoke_paper` — если время есть.)
+Показать: public OHLCV OK; Demo credentials / UTA client OK (без вывода ключей).
 
 ### B. Один проход desk (~20–30 с)
 
@@ -51,44 +51,40 @@ cd C:\bitget-bot
 .venv\Scripts\python.exe scripts\run_signal_loop.py --once
 ```
 
-Показать хвост логов / появление строк в `data/` (candidates / decisions).  
-**Не останавливайте** уже идущий `python -u run_signal_loop --poll`, если он крутится overnight — для демо достаточно `--once` в отдельном окне.
+Показать логи: `[HUB] OPEN`, `[HUB] TPSL`, `[SIZE] risk_usd=...`, строки в `data/decisions.jsonl`.  
+**Не останавливайте** фоновый `--poll`, если он уже крутится.
 
 ### C. Dashboard API (~40–60 с)
 
-Открыть в браузере (или curl):
-
 | URL | Что сказать |
 |-----|-------------|
-| `http://127.0.0.1:8080/health` | `ok` + `paper: true` — paper-only |
-| `http://127.0.0.1:8080/` | HTML desk: decisions / positions |
-| `http://127.0.0.1:8080/positions` | открытые paper-позиции |
-| `http://127.0.0.1:8080/decisions` | хвост решений агента + risk |
-| `http://127.0.0.1:8080/fills` | paper fills (если есть) |
+| `http://127.0.0.1:8080/health` | `exec_mode: hub_demo`, `bitget_demo: true` |
+| `http://127.0.0.1:8080/` | HTML desk, auto-refresh 8s, PnL с Demo |
+| `http://127.0.0.1:8080/positions` | `pnl_source=hub_demo`, exchange entry/mark/margin |
+| `http://127.0.0.1:8080/decisions` | agent + risk decisions |
+| `http://127.0.0.1:8080/account` | Demo equity overlay |
 
-Скриншот-хелпер: открыть `docs/demo_artifacts/snapshot.html` (статичный снимок JSON).
+Скриншот-хелпер: `docs/demo_artifacts/snapshot.html`.
 
 ### D. Закрытие (~10 с)
 
-- Повторить: **paper-only**, трек **Agent Trading**, репо + этот DEMO-скрипт.  
-- Docker — optional для судей (`Dockerfile` / `compose` в корне).  
-- Ссылка на README и `docs/SUBMISSION.md`.
+- Повторить: **Bitget Demo UTA**, не live mainnet, трек **Agent Trading**, репо + `docs/SUBMISSION.md`.
+- Docker optional для судей.
 
 ---
 
 ## Чеклист перед Rec
 
-- [ ] `PAPER=true` в `.env`
-- [ ] API на 8080 (pid в `data/api.pid` если стартовали скриптом)
-- [ ] Poll overnight не убит без нужды
+- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `HUB_SYNC_EXCHANGE_SL=1`
+- [ ] Demo API keys заполнены (не на экране)
+- [ ] API на 8080
 - [ ] `docs/demo_artifacts/*.json` свежие
-- [ ] Терминал крупный шрифт; браузер на health уже открыт
-- [ ] Секреты не на экране (`.env` не показывать)
+- [ ] Терминал крупный шрифт; `/health` уже открыт
 
-**Видео mp4 здесь не пишем** — этот файл = сценарий на один проход записи у вас локально (OBS / Win+G / Zoom и т.п.).
+**Видео mp4 здесь не пишем** — сценарий для локальной записи (OBS / Win+G / Zoom).
 
 ---
 
-## EN TL;DR (для судей в описании ролика)
+## EN TL;DR (для описания ролика)
 
-Paper-only RSI-momentum divergence agent desk for Bitget (Agent Trading): public OHLCV → signals → rules agent → risk gate → paper fills → FastAPI `:8080`. Docker optional. No live orders.
+Bitget S2 Divergent Agent Desk (Agent Trading): public OHLCV → signals → rules agent → risk gate → **Bitget Demo UTA** execution + paper shadow exits → FastAPI `:8080`. Exchange SL+TP2 on open; soft TP1/BE/trail local. Docker optional. Live mainnet blocked (`BITGET_ALLOW_LIVE=0`).

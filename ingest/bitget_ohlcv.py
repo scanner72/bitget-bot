@@ -70,6 +70,41 @@ def fetch_ohlcv(
     return df
 
 
+def get_ohlcv(
+    symbol: str = DEFAULT_SYMBOL,
+    timeframe: str = DEFAULT_TIMEFRAME,
+    limit: int = 200,
+    *,
+    prefer_cache: bool = True,
+    min_bars: int | None = None,
+    exchange: Any | None = None,
+) -> pd.DataFrame:
+    """Return OHLCV: candle cache first (WS/bootstrap), else REST fetch_ohlcv.
+
+    On REST miss fill, warms the cache for subsequent WS updates.
+    """
+    need = int(min_bars) if min_bars is not None else max(1, min(50, int(limit) // 4))
+    if prefer_cache:
+        try:
+            from ingest import candle_cache
+
+            cached = candle_cache.get_cached_ohlcv(symbol, timeframe, min_bars=need)
+            if cached is not None and len(cached) > 0:
+                if len(cached) > int(limit):
+                    return cached.iloc[-int(limit) :].copy()
+                return cached
+        except Exception:
+            pass
+    df = fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=limit, exchange=exchange)
+    try:
+        from ingest import candle_cache
+
+        candle_cache.set_ohlcv(symbol, timeframe, df)
+    except Exception:
+        pass
+    return df
+
+
 def fetch_mark_price(
     symbol: str,
     exchange: Any | None = None,
@@ -102,4 +137,30 @@ def fetch_mark_price(
         if px > 0:
             return px
     raise RuntimeError(f"No mark/last price for {symbol!r}")
+
+
+def get_mark_price(
+    symbol: str,
+    *,
+    prefer_cache: bool = True,
+    exchange: Any | None = None,
+) -> float:
+    """Mark/last: WS ticker/candle cache first, else REST fetch_mark_price."""
+    if prefer_cache:
+        try:
+            from ingest import candle_cache
+
+            cached = candle_cache.get_cached_mark(symbol)
+            if cached is not None and cached > 0:
+                return float(cached)
+        except Exception:
+            pass
+    px = fetch_mark_price(symbol, exchange=exchange)
+    try:
+        from ingest import candle_cache
+
+        candle_cache.set_mark(symbol, px)
+    except Exception:
+        pass
+    return px
 

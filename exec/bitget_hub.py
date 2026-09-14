@@ -231,6 +231,83 @@ class BitgetUtaClient:
         )
         return data.get("data")
 
+    def fills(
+        self,
+        *,
+        category: str = "USDT-FUTURES",
+        symbol: str | None = None,
+        order_id: str | None = None,
+        start_time: str | int | None = None,
+        end_time: str | int | None = None,
+        limit: int = 100,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """GET /api/v3/trade/fills — last 90 days."""
+        query: dict[str, Any] = {
+            "category": category,
+            "limit": str(min(max(int(limit), 1), 100)),
+        }
+        if symbol:
+            query["symbol"] = ccxt_to_bitget_symbol(symbol)
+        if order_id:
+            query["orderId"] = str(order_id)
+        if start_time is not None:
+            query["startTime"] = str(start_time)
+        if end_time is not None:
+            query["endTime"] = str(end_time)
+        if cursor:
+            query["cursor"] = str(cursor)
+        data = self.request("GET", "/api/v3/trade/fills", query=query)
+        return data.get("data") or {}
+
+    def unfilled_strategy_orders(
+        self,
+        *,
+        category: str = "USDT-FUTURES",
+        type: str = "tpsl",
+    ) -> list[dict[str, Any]]:
+        """GET /api/v3/trade/unfilled-strategy-orders."""
+        query: dict[str, Any] = {"category": category}
+        if type:
+            query["type"] = type
+        data = self.request(
+            "GET",
+            "/api/v3/trade/unfilled-strategy-orders",
+            query=query,
+        )
+        raw = data.get("data")
+        if isinstance(raw, list):
+            return [x for x in raw if isinstance(x, dict)]
+        if isinstance(raw, dict):
+            items = raw.get("list") or []
+            return [x for x in items if isinstance(x, dict)]
+        return []
+
+    def history_strategy_orders(
+        self,
+        *,
+        category: str = "USDT-FUTURES",
+        type: str = "tpsl",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """GET /api/v3/trade/history-strategy-orders."""
+        data = self.request(
+            "GET",
+            "/api/v3/trade/history-strategy-orders",
+            query={
+                "category": category,
+                "type": type,
+                "limit": str(min(max(int(limit), 1), 100)),
+            },
+        )
+        raw = data.get("data")
+        if isinstance(raw, list):
+            return [x for x in raw if isinstance(x, dict)]
+        if isinstance(raw, dict):
+            items = raw.get("list") or []
+            return [x for x in items if isinstance(x, dict)]
+        return []
+
     def place_order(self, **params: Any) -> dict[str, Any]:
         """POST /api/v3/trade/place-order — params per UTA Place-Order docs."""
         if "clientOid" not in params:

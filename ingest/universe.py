@@ -246,8 +246,8 @@ def load_scan_env() -> dict[str, Any]:
         mode = "auto"
     return {
         "mode": mode,
-        "crypto_top": max(0, _env_int("SCAN_CRYPTO_TOP", 20)),
-        "rtoken_top": max(0, _env_int("SCAN_RTOKEN_TOP", 20)),
+        "crypto_top": max(0, _env_int("SCAN_CRYPTO_TOP", 70)),
+        "rtoken_top": max(0, _env_int("SCAN_RTOKEN_TOP", 30)),
         "refresh_sec": max(0.0, _env_float("SCAN_REFRESH_SEC", 300.0)),
     }
 

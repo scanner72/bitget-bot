@@ -27,13 +27,20 @@ def _assert(cond: bool, msg: str) -> None:
 
 def main() -> int:
     os.environ["PROPOSED_SIZE_USD"] = "50"
+    os.environ["ALLOW_LONG"] = "1"
+    os.environ["ALLOW_SHORT"] = "1"
+    os.environ["RSI_LONG_MAX"] = "30"
+    os.environ["BTC_FILTERS_ENABLED"] = "0"
+    os.environ["RISK_USD_PER_TRADE"] = "2"
+    os.environ["MAX_NOTIONAL_USD"] = "100"
+    os.environ["EXEC_MODE"] = "paper"
     os.environ.pop("AGENT_LLM", None)
 
     bull = {
         "symbol": "BTC/USDT:USDT",
         "type": "BULLISH_DIV",
         "price": 65000.0,
-        "rsi": 42.0,
+        "rsi": 28.0,
     }
     d1 = decide(bull)
     print(f"ENTER bull: {d1}")
@@ -46,7 +53,7 @@ def main() -> int:
         "symbol": "ETH/USDT:USDT",
         "type": "LEVEL_CROSS_DOWN",
         "price": 3200.0,
-        "rsi": 55.0,
+        "rsi": 25.0,
     }
     d2 = decide(lcd)
     print(f"ENTER lcd: {d2}")
@@ -90,6 +97,17 @@ def main() -> int:
     )
     print(f"SKIP rsi high long: {d7}")
     _assert(d7["action"] == "SKIP" and "rsi_extreme_long" in d7["rules_fired"], d7)
+
+    d_zone = decide(
+        {
+            "symbol": "BTC/USDT:USDT",
+            "type": "BULLISH_DIV",
+            "price": 65000.0,
+            "rsi": 42.0,
+        }
+    )
+    print(f"SKIP rsi long zone: {d_zone}")
+    _assert(d_zone["action"] == "SKIP" and "rsi_long_zone" in d_zone["rules_fired"], d_zone)
 
     d8 = decide(
         {

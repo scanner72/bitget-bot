@@ -85,7 +85,7 @@ def _parse_ts(raw: Any) -> float | None:
 class RiskLimits:
     max_notional_usd: float = 100.0
     max_daily_loss_usd: float = 50.0
-    max_positions: int = 8
+    max_positions: int = 15
     one_position_per_symbol: bool = True
     cooldown_sec: float = 900.0
     allowed_types: set[str] | None = None
@@ -106,7 +106,7 @@ class RiskLimits:
         return cls(
             max_notional_usd=_env_float("MAX_NOTIONAL_USD", 100.0),
             max_daily_loss_usd=_env_float("MAX_DAILY_LOSS_USD", 50.0),
-            max_positions=max(0, _env_int("MAX_POSITIONS", 8)),
+            max_positions=max(0, _env_int("MAX_POSITIONS", 15)),
             one_position_per_symbol=_env_bool("ONE_POSITION_PER_SYMBOL", True),
             cooldown_sec=max(0.0, _env_float("COOLDOWN_SEC", 900.0)),
             allowed_types=_env_types("ALLOWED_TYPES"),
@@ -311,6 +311,32 @@ class RiskGate:
                     "reason": f"cooldown:{remaining}s",
                     "limits": limits_snap,
                 }
+
+        # Divergent pair / timeframe performance bans
+        try:
+            from risk.pair_blocker import is_pair_blocked, is_timeframe_blocked
+
+            blocked, block_reason = is_pair_blocked(symbol)
+            if blocked:
+                return {
+                    "allowed": False,
+                    "reason": f"pair_blocked:{block_reason}",
+                    "limits": limits_snap,
+                }
+            tf = str(
+                (candidate or {}).get("timeframe")
+                or os.getenv("TIMEFRAME", "15m")
+                or "15m"
+            ).strip()
+            tf_blocked, tf_reason = is_timeframe_blocked(tf)
+            if tf_blocked:
+                return {
+                    "allowed": False,
+                    "reason": f"tf_blocked:{tf_reason}",
+                    "limits": limits_snap,
+                }
+        except Exception:
+            pass
 
         # Cash wallet: deny if paper account cannot cover size_usd
         acct = account if account is not None else self.account

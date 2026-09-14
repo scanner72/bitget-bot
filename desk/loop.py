@@ -3,13 +3,13 @@
 Config from env / .env:
   SYMBOLS            comma-separated (BTCUSDT or BTC/USDT:USDT); used when SCAN_MODE=fixed
   SCAN_MODE          fixed|auto (default auto) — auto = top crypto + rToken USDT-M perps
-  SCAN_CRYPTO_TOP    default 20
-  SCAN_RTOKEN_TOP    default 20
-  SCAN_REFRESH_SEC   default 300; 0 = refresh every pass
+  SCAN_CRYPTO_TOP    default 70 (with WS)
+  SCAN_RTOKEN_TOP    default 30
+  MARKET_DATA_MODE   ws|rest (default ws) — public candles via WebSocket
+  POLL_SEC           rest poll interval / exit cadence hint
   TIMEFRAME          default 15m
-  POLL_SEC           default 60
-  ONCE=1             single pass then exit
-  OHLCV_LIMIT        default 200 (faster auto scans); raise for deeper history
+  ONCE=1             single REST pass then exit
+  OHLCV_LIMIT        default 200
 
 NO SPOT — Bitget USDT-M swap + rToken/RWA stock perps only.
 """
@@ -17,7 +17,9 @@ NO SPOT — Bitget USDT-M swap + rToken/RWA stock perps only.
 from __future__ import annotations
 
 import os
+import queue
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -30,8 +32,9 @@ from desk.candidate_log import CandidateLog, candidate_from_signal
 from desk.pipeline import evaluate_candidate
 from risk.gate import RiskGate
 from risk.exits import ExitConfig, check_open_exits
-from ingest.bitget_ohlcv import fetch_ohlcv, set_shared_exchange
 from ingest.symbols import to_display
+from ingest.bitget_ohlcv import get_ohlcv, set_shared_exchange
+from ingest.bitget_ws import BitgetPublicWs, market_data_mode
 from ingest.universe import UniverseCache, load_scan_env, resolve_scan_symbols
 from signals.engine import run_full_detection
 
@@ -153,7 +156,7 @@ def process_symbol(
         "error": None,
     }
     try:
-        df = fetch_ohlcv(symbol=symbol, timeframe=cfg.timeframe, limit=cfg.ohlcv_limit)
+        df = get_ohlcv(symbol=symbol, timeframe=cfg.timeframe, limit=cfg.ohlcv_limit)
         summary["bars"] = len(df)
         signal, has_zones = run_full_detection(df, cfg.pair_config or DEFAULT_PAIR_CONFIG)
         summary["has_zones"] = bool(has_zones)
@@ -273,13 +276,29 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
         sync_paper_account_from_hub()
     except Exception as _hub_sync_exc:  # noqa: BLE001
         print(f"[HUB] sync paper from hub skipped: {_hub_sync_exc}")
-    mode = "ONCE" if cfg.once else f"POLL/{cfg.poll_sec}s"
+    try:
+        from exec.reconcile import reconcile_paper_with_exchange
+
+        _rec = reconcile_paper_with_exchange(gate=gate)
+        _n_close = sum(1 for e in _rec if e.get("action") == "close")
+        if _rec:
+            print(f"[RECONCILE] startup events={len(_rec)} closed={_n_close}")
+    except Exception as _rec_exc:  # noqa: BLE001
+        print(f"[RECONCILE] startup skipped: {_rec_exc}")
+
+    md_mode = market_data_mode()
+    # ONCE always uses one REST pass (deterministic smoke / demo)
+    if cfg.once:
+        md_mode = "rest"
+
+    mode = "ONCE" if cfg.once else f"{md_mode.upper()}/poll={cfg.poll_sec}s"
     cache: UniverseCache | None = None
     if cfg.scan_mode == "auto":
         cache = UniverseCache()
         set_shared_exchange(cache.exchange)
     print(
-        f"desk.loop start mode={mode} scan={cfg.scan_mode} tf={cfg.timeframe} "
+        f"desk.loop start mode={mode} market_data={md_mode} scan={cfg.scan_mode} "
+        f"tf={cfg.timeframe} "
         f"ohlcv_limit={cfg.ohlcv_limit} "
         f"crypto_top={cfg.scan_crypto_top} rtoken_top={cfg.scan_rtoken_top} "
         f"refresh={cfg.scan_refresh_sec}s "
@@ -287,22 +306,227 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
         f"decisions={cfg.decisions_path}"
     )
     exit_cfg = ExitConfig.from_env()
+    last_blocker_ts = 0.0
+    try:
+        from risk.pair_blocker import BlockerConfig, run_blocker
+
+        _bcfg = BlockerConfig.from_env()
+        _sum = run_blocker(_bcfg)
+        print(
+            f"[BLOCKER] startup pairs={_sum.get('blocked_pairs')} "
+            f"tfs={_sum.get('blocked_tfs')} new={_sum.get('new_pair_blocks')}/"
+            f"{_sum.get('new_tf_blocks')} trades={_sum.get('closed_trades')}"
+        )
+        last_blocker_ts = time.time()
+    except Exception as _blk_exc:  # noqa: BLE001
+        print(f"[BLOCKER] startup skipped: {_blk_exc}")
+        _bcfg = None
+
+    if md_mode == "ws":
+        return _run_loop_ws(
+            cfg,
+            clog,
+            gate,
+            cache,
+            exit_cfg,
+            _bcfg,
+            last_blocker_ts,
+        )
+
     while True:
         symbols, cache = _active_symbols(cfg, cache)
         run_pass(cfg, clog, gate, symbols=symbols)
-        try:
-            check_open_exits(
-                gate=gate,
-                cfg=exit_cfg,
-                timeframe=cfg.timeframe,
-                ohlcv_limit=min(80, max(50, cfg.ohlcv_limit)),
-            )
-        except Exception as _exit_exc:  # noqa: BLE001
-            print(f"[EXIT] check error: {_exit_exc}")
+        _run_exits(gate, exit_cfg, cfg)
+        last_blocker_ts = _run_blocker(_bcfg, last_blocker_ts)
         if cfg.once:
             print("desk.loop done (ONCE)")
             return 0
         time.sleep(cfg.poll_sec)
+
+
+def _run_exits(gate: RiskGate, exit_cfg: ExitConfig, cfg: LoopConfig) -> None:
+    # Exchange SoT first: drop paper ghosts before soft SL/TP evaluation.
+    try:
+        from exec.reconcile import reconcile_paper_with_exchange
+
+        reconcile_paper_with_exchange(gate=gate)
+    except Exception as _rec_exc:  # noqa: BLE001
+        print(f"[RECONCILE] error: {_rec_exc}")
+    try:
+        from ingest.bitget_ohlcv import get_mark_price, get_ohlcv
+
+        check_open_exits(
+            gate=gate,
+            cfg=exit_cfg,
+            timeframe=cfg.timeframe,
+            ohlcv_limit=min(80, max(50, cfg.ohlcv_limit)),
+            fetch_ohlcv_fn=get_ohlcv,
+            fetch_mark_fn=get_mark_price,
+        )
+    except Exception as _exit_exc:  # noqa: BLE001
+        print(f"[EXIT] check error: {_exit_exc}")
+
+
+def _run_blocker(bcfg: Any, last_blocker_ts: float) -> float:
+    try:
+        from risk.pair_blocker import BlockerConfig, run_blocker
+
+        cfg_b = bcfg
+        if cfg_b is None:
+            cfg_b = BlockerConfig.from_env()
+        if time.time() - last_blocker_ts >= float(cfg_b.interval_sec):
+            _sum = run_blocker(cfg_b)
+            print(
+                f"[BLOCKER] pairs={_sum.get('blocked_pairs')} "
+                f"new_pair={_sum.get('new_pair_blocks')} "
+                f"new_tf={_sum.get('new_tf_blocks')}"
+            )
+            return time.time()
+    except Exception as _blk_exc:  # noqa: BLE001
+        print(f"[BLOCKER] error: {_blk_exc}")
+    return last_blocker_ts
+
+
+def _run_loop_ws(
+    cfg: LoopConfig,
+    clog: CandidateLog,
+    gate: RiskGate,
+    cache: UniverseCache | None,
+    exit_cfg: ExitConfig,
+    bcfg: Any,
+    last_blocker_ts: float,
+) -> int:
+    """Event-driven desk: process on candle bar_close; REST fallback if WS unhealthy."""
+    bar_q: queue.Queue[str] = queue.Queue()
+    pending: set[str] = set()
+    pending_lock = threading.Lock()
+
+    def _on_bar_close(symbol: str) -> None:
+        with pending_lock:
+            if symbol in pending:
+                return
+            pending.add(symbol)
+        bar_q.put(symbol)
+
+    from risk.tick_stops import QuoteBus, apply_tick_quotes, tick_stops_enabled
+
+    quote_bus = QuoteBus()
+    tick_on = tick_stops_enabled()
+
+    def _on_quote(
+        symbol: str,
+        last: float,
+        high: float | None = None,
+        low: float | None = None,
+    ) -> None:
+        quote_bus.on_quote(symbol, last, high, low)
+
+    ws = BitgetPublicWs(
+        timeframe=cfg.timeframe,
+        on_bar_close=_on_bar_close,
+        on_quote=_on_quote if tick_on else None,
+        subscribe_ticker=True,
+        bootstrap_limit=cfg.ohlcv_limit,
+        bootstrap_rate=float(os.getenv("WS_BOOTSTRAP_RATE", "8") or "8"),
+    )
+
+    symbols, cache = _active_symbols(cfg, cache)
+    print(f"[WS] starting n={len(symbols)} tick_stops={tick_on} (bootstrap in background)")
+    ws.start(symbols)
+    last_universe = time.time()
+    last_exit = 0.0
+    last_fallback = 0.0
+    last_health_log = 0.0
+    unhealthy_since: float | None = None
+
+    try:
+        while True:
+            # Universe refresh → resubscribe diff
+            if time.time() - last_universe >= max(30.0, float(cfg.scan_refresh_sec)):
+                symbols, cache = _active_symbols(cfg, cache)
+                ws.set_symbols(symbols, bootstrap=True)
+                last_universe = time.time()
+                print(f"[WS] universe refresh n={len(symbols)} healthy={ws.healthy}")
+
+            if time.time() - last_health_log >= 30.0:
+                print(
+                    f"[WS] health={ws.healthy} shards={ws.connected_shards} "
+                    f"q={bar_q.qsize()} tick={int(tick_on)}",
+                    flush=True,
+                )
+                last_health_log = time.time()
+
+            if tick_on:
+                try:
+                    from exec.paper import list_open as _list_open
+
+                    quote_bus.set_open_symbols(
+                        str(p.get("symbol") or "") for p in (_list_open() or [])
+                    )
+                    apply_tick_quotes(
+                        quote_bus,
+                        gate=gate,
+                        cfg=exit_cfg,
+                        timeframe=cfg.timeframe,
+                    )
+                except Exception as _tick_exc:  # noqa: BLE001
+                    print(f"[TICK] error: {_tick_exc}")
+
+            # Drain bar-close queue
+            drained = 0
+            while drained < 20:
+                try:
+                    sym = bar_q.get_nowait()
+                except queue.Empty:
+                    break
+                drained += 1
+                with pending_lock:
+                    pending.discard(sym)
+                try:
+                    summary = process_symbol(sym, cfg, clog, gate)
+                    flag = "ok"
+                    if summary.get("error"):
+                        flag = f"ERR:{summary['error']}"
+                    elif summary.get("candidate"):
+                        flag = (
+                            f"{summary['candidate']}"
+                            f"{'[DEDUP]' if summary.get('deduped') else ''}"
+                            f" action={summary.get('action')}"
+                        )
+                    else:
+                        flag = "EMPTY"
+                    print(
+                        f"[WS][bar_close] {to_display(sym) or sym}: {flag} "
+                        f"bars={summary.get('bars')}"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WS][bar_close] {sym} error: {exc}")
+
+            # Exits on a short cadence (marks from WS cache)
+            if time.time() - last_exit >= max(5.0, min(30.0, float(cfg.poll_sec))):
+                _run_exits(gate, exit_cfg, cfg)
+                last_exit = time.time()
+
+            last_blocker_ts = _run_blocker(bcfg, last_blocker_ts)
+
+            # REST fallback if WS unhealthy for >60s (full pass, throttled)
+            if ws.healthy:
+                unhealthy_since = None
+            else:
+                if unhealthy_since is None:
+                    unhealthy_since = time.time()
+                    print("[WS] unhealthy — will REST-fallback if persists")
+                elif time.time() - unhealthy_since >= 60.0:
+                    if time.time() - last_fallback >= max(float(cfg.poll_sec), 60.0):
+                        print("[WS] REST fallback pass")
+                        symbols, cache = _active_symbols(cfg, cache)
+                        run_pass(cfg, clog, gate, symbols=symbols)
+                        last_fallback = time.time()
+
+            time.sleep(0.5)
+    finally:
+        ws.stop()
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

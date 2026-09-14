@@ -41,3 +41,4 @@ Pipeline: Bitget public OHLCV → RSI divergence / level-cross → rules decide 
 2. Paper book reset then observe live Demo entries
 3. Exchange SL then SL+TP2 parachute if bot dies; move SL to BE after TP1
 4. UI must show real exchange PnL/size fields, not paper-only estimates
+5. **BTC filters aligned to `C:\divergent` (user 2026-09-10):** `BTC_REGIME_TF=1h` (chosen over live DB 4h), `BTC_EMA50_FILTER_ENABLED=0`, `BTC_MOMENTUM_PCT=1.2`. Policy notes: `.cursor/rules/btc-filters-policy.mdc`

@@ -1,0 +1,34 @@
+---
+description: BTC filter policy decisions (bitget vs divergent) — deferred items
+alwaysApply: true
+---
+
+# BTC filters — policy memory (bitget-bot)
+
+## Source of truth
+- Reference tree: `C:\divergent`
+- Regime TF standard (user 2026-09-10): **1h** (`regime.py` / description), not the stale “4h” DB row if it disagrees.
+- Other BTC keys taken from live divergent DB when present.
+
+## Applied on bitget (aligned to v1, 2026-09-11)
+- Both sides: `ALLOW_LONG=1`, `ALLOW_SHORT=1`
+- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN`
+- `RSI_LONG_MAX=30` (v1 `pairs.rsi_long_max`)
+- Full symmetric regime: bearish blocks long, bullish blocks short
+- `BTC_REGIME_TF=1h` (user standard; live DB still had 4h)
+- `BTC_REGIME_ENABLED=1`
+- `BTC_EMA50_FILTER_ENABLED=0` (live divergent had ema50 off)
+- `BTC_MOMENTUM_PCT=1.2`, `BTC_MOMENTUM_HOURS=4`
+- Pair blocker live: `BLOCK_CONSECUTIVE_LOSSES=3`, `BLOCK_MIN_TRADES=4`, WR 30 / cooldown 48h
+- **TF blocker off** (`TF_BLOCKER_ENABLED=0`) — user 2026-09-14. Do not re-enable; do not restore a 15m timeframe ban. It shut the whole desk (paper PnL ≈ $0 over 46 trades, cooldown 7d). Pair blocker stays.
+- `MAX_POSITIONS=15` on this desk (v1 `max_open_positions=60` — Bitget book kept smaller)
+- Dollar stop: `MAX_LOSS_PCT_OF_MARGIN=40`, `DOLLAR_STOP_SL_PCT_THRESHOLD=0` (v1)
+
+## Keep for now
+1. Log `btc_filter` reasons in decisions to measure dead-zone time with both sides on.
+2. Do not copy v1 `max_open_positions=60` unless the user asks — Bitget Demo + $500 notionals stay at 15.
+3. Soft alternatives if dead zones wipe the book: size-down instead of hard ban; or require both regime+EMA50 before blocking.
+4. Do not let timeframe blocker ban the only TF (`15m`). If paper TF PnL is near zero, leave the book open.
+
+## Note
+Live divergent DB on 2026-09-11 still had `btc_regime_tf=4h`; bitget follows user choice **1h** as the intended standard.

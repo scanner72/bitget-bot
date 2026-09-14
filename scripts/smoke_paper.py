@@ -28,6 +28,13 @@ def _assert(cond: bool, msg: str) -> None:
 
 def main() -> int:
     os.environ["PROPOSED_SIZE_USD"] = "50"
+    os.environ["ALLOW_LONG"] = "1"
+    os.environ["ALLOW_SHORT"] = "1"
+    os.environ["RSI_LONG_MAX"] = "30"
+    os.environ["BTC_FILTERS_ENABLED"] = "0"
+    os.environ["RISK_USD_PER_TRADE"] = "2"
+    os.environ["MAX_NOTIONAL_USD"] = "100"
+    os.environ["EXEC_MODE"] = "paper"
     os.environ.pop("AGENT_LLM", None)
 
     with tempfile.TemporaryDirectory(prefix="bitget_paper_smoke_") as tmp:
@@ -67,7 +74,7 @@ def main() -> int:
             "symbol": "BTC/USDT:USDT",
             "type": "BULLISH_DIV",
             "price": 65000.0,
-            "rsi": 42.0,
+            "rsi": 28.0,
         }
 
         # 1) Fake ENTER path via pipeline -> fill + open position
@@ -146,7 +153,7 @@ def main() -> int:
         closed = close_paper(out1["position_id"], exit_price, gate=gate, book=book)
         print(f"CLOSE: {closed}")
         _assert(closed["realized_pnl"] > 0, closed)
-        expected = 50.0 * ((exit_price / 65000.0) - 1.0)
+        expected = float(closed["size_usd"]) * ((exit_price / 65000.0) - 1.0)
         _assert(abs(closed["realized_pnl"] - expected) < 1e-6, (closed, expected))
         _assert(len(list_open(book=book)) == 0, "expected flat book")
         _assert(len(gate.state.open_positions) == 0, gate.state.open_positions)

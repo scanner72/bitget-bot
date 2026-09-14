@@ -163,10 +163,50 @@ def main() -> int:
         _assert(abs(float(pos_c2["sl"]) - entry) < 1e-9, pos_c2)
         _assert(pos_c2.get("tp1_hit") is True or pos_c2["meta"].get("tp1_hit") is True, pos_c2)
 
+        # --- Case D: P1 hard BE — after TP1, wide ATR trail must not push SL below entry ---
+        from risk.exits import update_trailing_sl
+
+        pos_d = {
+            "symbol": "TEST4/USDT:USDT",
+            "side": "long",
+            "entry_price": entry,
+            "sl": entry,  # already BE
+            "tp1_hit": True,
+            "original_sl": 98.0,
+            "atr": 2.0,
+            "meta": {"tp1_hit": True, "original_sl": 98.0, "atr": 2.0},
+        }
+        # Wide range candles inflate ATR so candidate = trail - 1.5*ATR could be < entry
+        df_wide = _df([(100, 120.0, 99.0, 119.0)] * 20)
+        t_upd = update_trailing_sl(pos_d, 120.0, 99.0, df_wide)
+        print(f"Trail BE clamp: updates={t_upd}")
+        if "sl" in t_upd:
+            _assert(float(t_upd["sl"]) >= entry - 1e-9, t_upd)
+        # Simulate loss-side SL hit after tp1_hit must NOT be labeled trailing_hit
+        pos_d_bad = dict(pos_d)
+        pos_d_bad["sl"] = 98.0  # wrongly still below BE
+        pos_d_bad["tp1_hit"] = True
+        ev_bad = evaluate_exit(
+            pos_d_bad,
+            candle_high=100.0,
+            candle_low=97.0,
+            mark_price=97.5,
+            df=_df([(100, 100.0, 97.0, 97.5)] * 20),
+            cfg=ExitConfig(
+                be_hours=999,
+                max_hold_hours=999,
+                max_loss_pct_of_margin=0,
+                early_close_hours=0,
+                enable_trailing=False,
+            ),
+        )
+        print(f"Loss SL after tp1 flag: action={ev_bad.action} status={ev_bad.status}")
+        _assert(ev_bad.action == "close" and ev_bad.status == "sl_hit", ev_bad)
+
         # cleanup remaining
         book.close_paper(pid_c, entry, meta={"exit_status": "smoke_cleanup"})
 
-        print("smoke_exits OK: sl_hit + tp2_hit + tp1_be")
+        print("smoke_exits OK: sl_hit + tp2_hit + tp1_be + hard_be_p1")
         return 0
 
 

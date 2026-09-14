@@ -87,7 +87,7 @@ class ExitConfig:
     # dollar_stop / early close (0 disables)
     max_loss_pct_of_margin: float = 0.0
     dollar_stop_sl_pct_threshold: float = 0.70
-    early_close_hours: float = 0.0
+    early_close_hours: float = 3.0
     early_close_loss_pct: float = 20.0
     paper_leverage: float = 1.0
     exit_check_sec: float = 0.0  # 0 = every desk pass
@@ -105,7 +105,7 @@ class ExitConfig:
             dollar_stop_sl_pct_threshold=max(
                 0.0, _env_float("DOLLAR_STOP_SL_PCT_THRESHOLD", 0.70)
             ),
-            early_close_hours=max(0.0, _env_float("EARLY_CLOSE_HOURS", 0.0)),
+            early_close_hours=max(0.0, _env_float("EARLY_CLOSE_HOURS", 3.0)),
             early_close_loss_pct=max(0.0, _env_float("EARLY_CLOSE_LOSS_PCT", 20.0)),
             paper_leverage=max(1.0, _env_float("PAPER_LEVERAGE", 1.0)),
             exit_check_sec=max(0.0, _env_float("EXIT_CHECK_SEC", 0.0)),
@@ -130,10 +130,10 @@ def _is_long(pos: dict[str, Any]) -> bool:
 
 
 def _tp1_already_hit(pos: dict[str, Any], entry: float) -> bool:
-    if bool(_pos_get(pos, "trailing_active", False)):
-        return True
     if bool(_pos_get(pos, "tp1_hit", False)):
         return True
+    # Do NOT treat trailing_active alone as TP1 — that mislabeled loss-side
+    # SL hits as trailing_hit (XAG/ETH red "trails").
     sl_raw = _pos_get(pos, "sl")
     if sl_raw is None:
         return False
@@ -141,7 +141,26 @@ def _tp1_already_hit(pos: dict[str, Any], entry: float) -> bool:
         sl = float(sl_raw)
     except (TypeError, ValueError):
         return False
-    return abs(sl - entry) < entry * 0.0001
+    # SL already parked at/beyond breakeven
+    is_long = _is_long(pos)
+    if is_long:
+        return sl >= entry * (1.0 - 1e-9)
+    return sl <= entry * (1.0 + 1e-9)
+
+
+def _clamp_sl_to_breakeven(
+    sl: float,
+    entry: float,
+    *,
+    is_long: bool,
+    protect: bool,
+) -> float:
+    """After TP1 / BE protect: never allow SL on the losing side of entry."""
+    if not protect:
+        return sl
+    if is_long:
+        return max(float(sl), float(entry))
+    return min(float(sl), float(entry))
 
 
 def update_trailing_sl(
@@ -156,6 +175,7 @@ def update_trailing_sl(
 
     Activates when price moves 1x original SL distance from entry.
     Once active, SL trails by max(1.5*ATR, entry*0.005). Only profit direction.
+    P1: once TP1 hit (or SL already at BE), never trail SL back through entry.
     """
     entry = float(pos.get("entry_price") or 0)
     sl = float(_pos_get(pos, "sl") or 0)
@@ -210,6 +230,8 @@ def update_trailing_sl(
         else:
             candidate = new_trail + sl_distance
             new_sl = min(sl, candidate)
+        # P1 hard BE: once trailing is active, never allow SL on losing side of entry
+        new_sl = _clamp_sl_to_breakeven(new_sl, entry, is_long=is_long, protect=True)
 
     updates: dict[str, Any] = {
         "trail_price": new_trail,
@@ -296,8 +318,10 @@ def evaluate_exit(
         hit_sl = (sl_check <= sl) if is_long else (sl_check >= sl)
         if hit_sl:
             is_profitable = (sl >= entry) if is_long else (sl <= entry)
-            status = "trailing_hit" if (is_profitable or tp1_hit) else "sl_hit"
-            close_price = cur_price or sl
+            # P1: trailing_hit only when SL is actually at/beyond BE (not merely tp1 flag)
+            status = "trailing_hit" if is_profitable else "sl_hit"
+            # Prefer SL price for BE/trail exits so mark gap cannot invent a loss label
+            close_price = sl if is_profitable else (cur_price or sl)
             return ExitEvent(action="close", status=status, close_price=close_price)
 
     # 2) TP2 full close
@@ -310,7 +334,7 @@ def evaluate_exit(
                 close_price=cur_price or tp2,
             )
 
-    # 3) TP1 → move SL to BE (entry), do not close
+    # 3) TP1 → hard BE (entry), do not close
     if tp1 is not None and not tp1_hit:
         hit_tp1 = (tp_check >= tp1) if is_long else (tp_check <= tp1)
         if hit_tp1:
@@ -347,6 +371,16 @@ def evaluate_exit(
                 atr_period=cfg.atr_period,
             )
             if t_upd:
+                # Re-clamp any SL from trail against BE when TP1 already hit
+                if "sl" in t_upd and t_upd["sl"] is not None:
+                    t_upd["sl"] = _clamp_sl_to_breakeven(
+                        float(t_upd["sl"]),
+                        entry,
+                        is_long=is_long,
+                        protect=bool(tp1_hit)
+                        or bool(t_upd.get("trailing_active"))
+                        or bool(_pos_get(trail_src, "trailing_active", False)),
+                    )
                 updates.update(t_upd)
                 if "sl" in t_upd:
                     sl = float(t_upd["sl"])
@@ -359,7 +393,7 @@ def evaluate_exit(
                         return ExitEvent(
                             action="close",
                             status="trailing_hit" if is_profitable else "sl_hit",
-                            close_price=sl,
+                            close_price=sl if is_profitable else (cur_price or sl),
                             updates=updates,
                         )
 
@@ -375,6 +409,15 @@ def evaluate_exit(
                 if _pos_get(pos, "original_sl") is None:
                     updates["original_sl"] = sl
                 sl = entry
+
+    # If TP1/BE already active, hard-clamp any pending SL update to entry
+    if updates.get("sl") is not None and (
+        tp1_hit or updates.get("tp1_hit") or updates.get("be_timeout")
+    ):
+        updates["sl"] = _clamp_sl_to_breakeven(
+            float(updates["sl"]), entry, is_long=is_long, protect=True
+        )
+        sl = float(updates["sl"])
 
     # 6) Early close / dollar_stop (env-gated)
     size_usd = float(pos.get("size_usd") or 0)
@@ -459,6 +502,90 @@ def mark_exit_check_ran() -> None:
     _last_exit_check_mono = time.monotonic()
 
 
+def apply_exit_event(
+    pos: dict[str, Any],
+    ev: ExitEvent,
+    *,
+    book: Any,
+    gate: Any | None = None,
+) -> dict[str, Any] | None:
+    """Persist an evaluate_exit result (update levels or close). None if action=none."""
+    from exec.router import close_position
+
+    pid = str(pos.get("position_id") or "")
+    sym = str(pos.get("symbol") or "")
+    if ev.action == "none":
+        return None
+
+    if ev.action == "update" and ev.updates:
+        updated = apply_position_updates(pos, ev.updates)
+        if "sl" in ev.updates and ev.updates.get("sl") is not None:
+            try:
+                from exec.router import sync_exchange_sl
+
+                reason = "tp1_be" if ev.updates.get("tp1_hit") else (
+                    "be_timeout" if ev.updates.get("be_timeout") else (
+                        "trailing" if ev.updates.get("trailing_active") else "sl_update"
+                    )
+                )
+                hub_meta = sync_exchange_sl(updated, ev.updates["sl"], reason=reason)
+                if hub_meta:
+                    updated = apply_position_updates(updated, hub_meta)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
+        book.update_position(pid, updated)
+        note = ev.status or "levels_update"
+        print(
+            f"[EXIT] UPDATE {pid} {sym} {note} "
+            f"sl={updated.get('sl')} tp1_hit={updated.get('tp1_hit')} "
+            f"trail={updated.get('trailing_active')}"
+        )
+        return {
+            "action": "update",
+            "position_id": pid,
+            "symbol": sym,
+            "status": ev.status,
+            "updates": dict(ev.updates),
+        }
+
+    if ev.action == "close" and ev.close_price is not None and ev.status:
+        close_meta = {
+            "exit_status": ev.status,
+            "exit_note": ev.note,
+        }
+        if ev.updates:
+            close_meta.update(ev.updates)
+        try:
+            result = close_position(
+                pid,
+                float(ev.close_price),
+                meta=close_meta,
+                gate=gate,
+                book=book,
+            )
+            print(
+                f"[EXIT] CLOSE {pid} {sym} status={ev.status} "
+                f"@ {ev.close_price} pnl={result.get('realized_pnl')}"
+            )
+            return {
+                "action": "close",
+                "position_id": pid,
+                "symbol": sym,
+                "status": ev.status,
+                "close_price": ev.close_price,
+                "realized_pnl": result.get("realized_pnl"),
+            }
+        except Exception as exc:  # noqa: BLE001
+            print(f"[EXIT] ERROR close {pid} {sym}: {exc}")
+            return {
+                "action": "error",
+                "position_id": pid,
+                "symbol": sym,
+                "error": str(exc),
+            }
+    return None
+
+
 def apply_position_updates(pos: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
     """Merge exit updates into position top-level + meta."""
     out = dict(pos)
@@ -491,7 +618,6 @@ def check_open_exits(
     Returns list of event dicts for logging.
     """
     from exec.paper import PaperBook
-    from exec.router import close_position
 
     cfg = cfg or ExitConfig.from_env()
     if not force and not should_run_exit_check(cfg):
@@ -554,83 +680,8 @@ def check_open_exits(
             df=df,
             cfg=cfg,
         )
-        if ev.action == "none":
-            continue
-
-        if ev.action == "update" and ev.updates:
-            updated = apply_position_updates(pos, ev.updates)
-            # After TP1 / BE timeout / trailing: push SL to exchange parachute
-            if "sl" in ev.updates and ev.updates.get("sl") is not None:
-                try:
-                    from exec.router import sync_exchange_sl
-
-                    reason = "tp1_be" if ev.updates.get("tp1_hit") else (
-                        "be_timeout" if ev.updates.get("be_timeout") else (
-                            "trailing" if ev.updates.get("trailing_active") else "sl_update"
-                        )
-                    )
-                    hub_meta = sync_exchange_sl(updated, ev.updates["sl"], reason=reason)
-                    if hub_meta:
-                        updated = apply_position_updates(updated, hub_meta)
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
-            b.update_position(pid, updated)
-            note = ev.status or "levels_update"
-            print(
-                f"[EXIT] UPDATE {pid} {sym} {note} "
-                f"sl={updated.get('sl')} tp1_hit={updated.get('tp1_hit')} "
-                f"trail={updated.get('trailing_active')}"
-            )
-            events.append(
-                {
-                    "action": "update",
-                    "position_id": pid,
-                    "symbol": sym,
-                    "status": ev.status,
-                    "updates": dict(ev.updates),
-                }
-            )
-            continue
-
-        if ev.action == "close" and ev.close_price is not None and ev.status:
-            # Persist any pending updates onto meta for the fill
-            close_meta = {
-                "exit_status": ev.status,
-                "exit_note": ev.note,
-            }
-            if ev.updates:
-                close_meta.update(ev.updates)
-            try:
-                result = close_position(
-                    pid,
-                    float(ev.close_price),
-                    meta=close_meta,
-                    gate=gate,
-                    book=b,
-                )
-                print(
-                    f"[EXIT] CLOSE {pid} {sym} status={ev.status} "
-                    f"@ {ev.close_price} pnl={result.get('realized_pnl')}"
-                )
-                events.append(
-                    {
-                        "action": "close",
-                        "position_id": pid,
-                        "symbol": sym,
-                        "status": ev.status,
-                        "close_price": ev.close_price,
-                        "realized_pnl": result.get("realized_pnl"),
-                    }
-                )
-            except Exception as exc:  # noqa: BLE001
-                print(f"[EXIT] ERROR close {pid} {sym}: {exc}")
-                events.append(
-                    {
-                        "action": "error",
-                        "position_id": pid,
-                        "symbol": sym,
-                        "error": str(exc),
-                    }
-                )
+        applied = apply_exit_event(pos, ev, book=b, gate=gate)
+        if applied:
+            events.append(applied)
 
     return events

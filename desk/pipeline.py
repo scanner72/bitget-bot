@@ -70,6 +70,30 @@ def evaluate_candidate(
 
     agent_out = decide(candidate, ctx)
     action = str(agent_out.get("action", "SKIP")).upper()
+    _sym = str(candidate.get("symbol") or "")
+    _sym_disp = to_display(_sym) if _sym else ""
+    # Divergent BTC regime / momentum / EMA50 filters
+    if action in {"ENTER", "REDUCE"}:
+        try:
+            from risk.btc_filters import check_btc_filters
+
+            side = str(agent_out.get("side") or "")
+            ok_btc, btc_reason = check_btc_filters(side, _sym)
+            if not ok_btc:
+                action = "SKIP"
+                rules = list(agent_out.get("rules_fired") or [])
+                rules.append("btc_filter")
+                agent_out = {
+                    **agent_out,
+                    "action": "SKIP",
+                    "rationale": f"btc_filter:{btc_reason}",
+                    "rules_fired": rules,
+                }
+                print(
+                    f"[BTC] SKIP {_sym_disp or _sym} side={side} reason={btc_reason}"
+                )
+        except Exception as _btc_exc:  # noqa: BLE001
+            print(f"[BTC] filter error: {_btc_exc}")
     # Provisional size from agent (logging only); open uses risk notional after ATR.
     provisional_size = float(agent_out.get("size_usd") or 0.0)
     if provisional_size <= 0 and action in {"ENTER", "REDUCE"}:
@@ -77,8 +101,6 @@ def evaluate_candidate(
         agent_out = {**agent_out, "size_usd": provisional_size}
     size = provisional_size
 
-    _sym = str(candidate.get("symbol") or "")
-    _sym_disp = to_display(_sym) if _sym else ""
     print(
         f"[AGENT] {action} {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
         f"side={agent_out.get('side')} size={provisional_size} "
@@ -116,10 +138,10 @@ def evaluate_candidate(
             ohlcv_df = ctx.get("ohlcv_df")
             if ohlcv_df is None:
                 try:
-                    from ingest.bitget_ohlcv import fetch_ohlcv
+                    from ingest.bitget_ohlcv import get_ohlcv
 
                     tf = str(ctx.get("timeframe") or candidate.get("timeframe") or "15m")
-                    ohlcv_df = fetch_ohlcv(
+                    ohlcv_df = get_ohlcv(
                         symbol=str(candidate.get("symbol")),
                         timeframe=tf,
                         limit=int(ctx.get("ohlcv_limit") or 50),
@@ -185,6 +207,9 @@ def evaluate_candidate(
                 "rationale": agent_out.get("rationale"),
                 "provisional_size_usd": provisional_size,
                 "risk_usd": risk_usd,
+                "timeframe": str(
+                    ctx.get("timeframe") or candidate.get("timeframe") or "15m"
+                ),
             }
             if levels is not None:
                 open_meta.update(levels)

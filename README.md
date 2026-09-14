@@ -1,10 +1,10 @@
 # Bitget S2 — Divergent Agent Desk / Divergent Agent Desk
 
-> **EN one-liner:** Paper-only RSI–momentum divergence agent desk for Bitget (Agent Trading track): public OHLCV → signals → rules agent → risk gate → paper fills → FastAPI dashboard.  
-> **RU one-liner:** Paper-only агентский desk на Bitget (трек Agent Trading): публичный OHLCV → дивергенции RSI–momentum → rules-агент → риск-гейт → paper-сделки → FastAPI-дашборд.
+> **EN one-liner:** Bitget S2 Divergent Agent Desk (Agent Trading): public OHLCV → RSI/level-cross signals → rules agent → risk gate → **Bitget Demo UTA** (`hub_demo`) + paper shadow → FastAPI dashboard.  
+> **RU one-liner:** Bitget S2 Divergent Agent Desk: публичный OHLCV → сигналы RSI/level-cross → rules-агент → риск-гейт → **Bitget Demo UTA** (`hub_demo`) + paper shadow → FastAPI-дашборд.
 
 **Track:** Agent Trading / Divergent Agent Desk  
-**Mode:** `PAPER=true` only — no live orders, no private Bitget keys required for public OHLCV demo.
+**Mode (recommended):** `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0` — Demo market orders on Bitget UTA (`paptrading`) with local paper book for soft exits/UI. Public OHLCV needs no keys; Demo keys stay in local `.env` only.
 
 ---
 
@@ -12,25 +12,28 @@
 
 ```mermaid
 flowchart LR
-  BG[Bitget public OHLCV<br/>ccxt USDT-M] --> IN[ingest/bitget_ohlcv]
+  BG[Bitget public OHLCV<br/>WS candles + REST bootstrap] --> IN[ingest/candle_cache]
   IN --> SIG[signals/<br/>RSI-momentum divergence]
   SIG --> DESK[desk loop<br/>candidates.jsonl]
   DESK --> AG[agent.decide<br/>ENTER / SKIP / REDUCE]
   AG --> RK[risk.gate<br/>limits + kill]
-  RK --> PAP[exec.paper + account<br/>fills + equity]
+  RK --> EX[exec.router<br/>hub_demo + paper shadow]
+  EX --> HUB[exec/bitget_hub<br/>UTA Demo market + TPSL]
+  EX --> PAP[exec.paper<br/>soft exits + UI state]
   DESK --> API[api FastAPI :8080]
   AG --> API
   RK --> API
   PAP --> API
+  HUB --> API
 ```
 
 ASCII:
 
 ```
-Bitget public OHLCV (ccxt)
+Bitget public OHLCV (WS candles + REST bootstrap)
         |
         v
-   ingest/bitget_ohlcv
+   ingest/candle_cache + bitget_ws
         |
         v
    signals/ (RSI-momentum divergence)
@@ -44,34 +47,40 @@ Bitget public OHLCV (ccxt)
         |    risk.gate (notional / daily loss / max pos / cooldown)
         |         |
         |         v
-        |    exec.paper (fills + open positions)   [PAPER ONLY]
+        |    exec.router (EXEC_MODE=hub_demo|paper|live)
+        |         |
+        |         +--> exec.bitget_hub (Demo UTA market open/close + exchange SL/TP2)
+        |         +--> exec.paper (shadow book: soft TP1/BE/trail, fills, equity overlay)
         |
         v
-   api/ FastAPI dashboard  http://127.0.0.1:8080
+   api/ FastAPI dashboard  http://127.0.0.1:8080  (PnL from Demo when hub_demo)
 ```
 
 ---
 
 ## How it uses Bitget / Как используется Bitget
 
-| Today (demo) | Later (Agent Hub / LLM) |
-|--------------|-------------------------|
-| **Public** Bitget OHLCV via `ccxt` (`ingest/bitget_ohlcv.py`) — no API keys | Optional LLM via `AGENT_MODE=llm` (OpenAI-compatible / Headroom / Agent Hub); rules fallback |
-| Symbols: ccxt **swap only** (NO SPOT) e.g. `BTC/USDT:USDT`, `AAPL/USDT:USDT` rToken (compact `BTCUSDT` normalized in desk) | Private trade APIs **not** wired in this scaffold |
-| Detection + paper pipeline only | Live execution out of scope for S2 paper submission |
+| Today (S2 demo) | Optional / later |
+|-----------------|------------------|
+| **Public** Bitget OHLCV via WS candles (`MARKET_DATA_MODE=ws`) + REST bootstrap; exec stays REST `hub_demo` | LLM via `AGENT_MODE=llm` (OpenAI-compatible); rules fallback |
+| **Demo execution** via UTA v3 (`exec/bitget_hub.py`): market open/close, exchange SL+TP2, sync SL after soft TP1/BE/trail | Policy Trader layer (ENTER/SKIP/size from symbol stats) — not wired yet |
+| Symbols: ccxt **swap only** (NO SPOT) e.g. `BTC/USDT:USDT`, rToken perps | Live (`EXEC_MODE=live`) guarded by `BITGET_ALLOW_LIVE=1` — not for hackathon demo |
+| Dashboard: real Demo PnL/entry/mark, equity overlay, auto-refresh 8s | GitHub push / submission video — see `docs/SUBMISSION.md` |
 
-**EN:** Current build proves the full agent loop on public market data and local paper state.  
-**RU:** Сейчас полный агентский цикл на публичных данных и локальном paper-состоянии; live-ордера не подключены.
+**EN:** Full agent loop on public data + Bitget Demo execution with paper shadow for exits and UI. Exchange leverage stays at Bitget default (often 20×); do not force 1×.  
+**RU:** Полный цикл на публичных данных + исполнение на Bitget Demo; paper book — soft exits и UI. Плечо на бирже не форсим.
 
 ---
 
 ## Risk controls / Контроль рисков
 
-Paper risk gate (`risk/gate.py`), env defaults:
+Risk gate (`risk/gate.py`) + risk-to-SL sizing (`risk/sizing.py`), env defaults:
 
 | Control | Env | Default |
 |---------|-----|---------|
+| Risk per trade (sized to SL distance) | `RISK_USD_PER_TRADE` | 2 |
 | Max notional per entry | `MAX_NOTIONAL_USD` | 100 |
+| Min notional | `MIN_NOTIONAL_USD` | 10 |
 | Daily loss kill switch | `MAX_DAILY_LOSS_USD` | 50 |
 | Max open positions | `MAX_POSITIONS` | 8 |
 | One position per symbol | `ONE_POSITION_PER_SYMBOL` | true |
@@ -86,9 +95,22 @@ Agent rules also skip RSI extremes (`RSI_OVERBOUGHT` / `RSI_OVERSOLD`). All deci
 
 ---
 
-## Paper ATR exits / TP·SL
+## Hub demo execution / Bitget Demo
 
-Ported from divergent paper tracker (paper-only):
+Recommended env (see `.env.example`):
+
+| Env | Default | Role |
+|-----|---------|------|
+| `EXEC_MODE` | `hub_demo` | `paper` \| `hub_demo` \| `live` (guarded) |
+| `BITGET_DEMO` | `1` | `paptrading=1` on UTA REST |
+| `BITGET_ALLOW_LIVE` | `0` | blocks live unless explicitly enabled |
+| `HUB_SYNC_EXCHANGE_SL` | `1` | push SL to exchange after soft TP1/BE/trail |
+
+On open: exchange **SL + TP2** (`place-strategy-order` tpsl). Soft **TP1 / BE / trail** stay in `risk/exits.py` on the paper shadow. Smokes: `scripts/smoke_hub_demo.py`, `scripts/smoke_router_demo.py`.
+
+## ATR exits / TP·SL
+
+Ported from divergent paper tracker (paper shadow + hub sync):
 
 - On open: ATR = mean(high−low).tail(14), floor `max(atr, entry×0.02)` → SL / TP1 / TP2 stored on position + meta.
 - Filter: skip open if `atr_pct` &lt; 0.3% or &gt; 6%.
@@ -103,14 +125,19 @@ Ported from divergent paper tracker (paper-only):
 | Path | Role |
 |------|------|
 | `signals/` | Ported detector, indicators, models, `engine.run_full_detection` |
-| `ingest/bitget_ohlcv.py` | Public ccxt Bitget `fetch_ohlcv` -> DataFrame (USDT-M swap; shared client) |
+| `ingest/bitget_ohlcv.py` | REST `fetch_ohlcv` / `get_ohlcv` (cache-then-REST) |
+| `ingest/bitget_ws.py` | Public WS candles + tickers, shard/reconnect |
+| `ingest/candle_cache.py` | In-memory OHLCV + mark cache |
 | `ingest/universe.py` | Auto-scan: crypto USDT-M vs rToken/RWA stock perps (NO SPOT); rank by 24h quote volume |
 | `desk/` | Candle → signal → candidate JSONL loop |
 | `agent/decide.py` | ENTER / SKIP / REDUCE; `AGENT_MODE=rules` (default) or optional `llm` with rules fallback |
 | `risk/gate.py` | Paper risk gate |
-| `exec/paper.py` | Paper fills + open positions |
+| `exec/router.py` | Routes open/close: paper \| hub_demo \| live |
+| `exec/bitget_hub.py` | Bitget UTA v3 Demo/live client (market, TPSL, `pricePlace`) |
+| `exec/hub_balance.py` | Demo equity overlay on paper account snapshot |
+| `exec/paper.py` | Paper shadow fills + open positions |
 | `exec/account.py` | Paper cash wallet + equity (`PAPER_START_BALANCE_USD`) |
-| `api/app.py` | FastAPI paper dashboard |
+| `api/app.py` | FastAPI dashboard (Demo PnL when `hub_demo`) |
 | `scripts/smoke_*.py` | Offline / public-data smoke tests |
 | `scripts/run_signal_loop.py` | Multi-symbol poll/once candidate logger |
 | `scripts/run_api.py` | uvicorn dashboard (`HOST`/`PORT` env; Docker uses `0.0.0.0:8080`) |
@@ -125,7 +152,7 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env
-# PAPER=true already; keys empty OK for public OHLCV
+# Fill BITGET_* Demo keys for hub_demo; public OHLCV smokes work without keys
 ```
 
 Smoke (no network except Bitget public for `smoke_bitget`):
@@ -158,7 +185,7 @@ Poll desk:
 
 ## Quickstart — Docker / Docker
 
-Requires Docker Desktop. Paper-oriented; `.env` from example (empty Bitget keys OK).
+Requires Docker Desktop. Set `.env` from example (`EXEC_MODE=hub_demo` + Demo keys for trading smokes).
 
 ```bash
 cd C:\bitget-bot
@@ -192,14 +219,15 @@ Shared volume: `./data` → `/app/data`. Image default CMD is the API; compose o
 
 | Basket | How identified | Env |
 |--------|----------------|-----|
-| Crypto USDT-M | `info.isRwa == NO` (linear USDT swap) | `SCAN_CRYPTO_TOP` (default 20) |
-| rToken / stock / RWA | Prefer Bitget `info.isRwa == YES` (e.g. AAPL/USDT:USDT, ETFs, indices, tokenized equities, RWA commodities). Fallback: base ends with `STOCK` or curated equity tickers | `SCAN_RTOKEN_TOP` (default 20) |
+| Crypto USDT-M | `info.isRwa == NO` (linear USDT swap) | `SCAN_CRYPTO_TOP` (default 70) |
+| rToken / RWA stock perps | Prefer Bitget `info.isRwa == YES` (e.g. AAPL/USDT:USDT, ETFs, indices, tokenized equities, RWA commodities). Fallback: base ends with `STOCK` or curated equity tickers | `SCAN_RTOKEN_TOP` (default 30) |
 
 | Env | Default | Notes |
 |-----|---------|-------|
 | `SCAN_MODE` | `auto` | `auto` = top crypto union top rToken each refresh; `fixed` = use `SYMBOLS` only |
 | `SCAN_REFRESH_SEC` | `300` | `0` = refresh every desk pass |
-| `OHLCV_LIMIT` | `200` | Faster auto scans |
+| `MARKET_DATA_MODE` | `ws` | `ws` = public candles/tickers; `rest` = legacy poll. Execution stays REST `hub_demo` |
+| `OHLCV_LIMIT` | `200` | Faster auto scans / WS bootstrap depth |
 | `SYMBOLS` | — | Used when `SCAN_MODE=fixed` |
 
 Smoke:
@@ -210,10 +238,11 @@ Smoke:
 
 ## Demo checklist / Чеклист демо
 
-- [ ] `PAPER=true` — **paper-only disclaimer:** no live orders, no private API required for public OHLCV
+- [ ] `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0` — Demo UTA, not live mainnet
+- [ ] Demo keys in `.env` (never commit); public OHLCV smokes need no keys
 - [ ] Smoke: `smoke_signal` → `smoke_bitget` → `smoke_risk` → `smoke_decide` → `smoke_llm_decide` → `smoke_paper` → `smoke_account`
 - [ ] One desk pass: `python scripts/run_signal_loop.py --once`
-- [ ] API up: `http://127.0.0.1:8080/health` → `{"ok":true,"paper":true}`
+- [ ] API up: `http://127.0.0.1:8080/health` → `ok`, `exec_mode":"hub_demo"`, `bitget_demo":true`
 - [ ] Dashboard: `http://127.0.0.1:8080/` shows decisions / positions
 - [ ] Optional Docker: `docker compose up -d` then same API URL
 - [ ] Show `data/candidates.jsonl` + `data/decisions.jsonl` (gitignored)
@@ -222,12 +251,12 @@ Smoke:
 
 ## Bitget S2 submission checklist / Чеклист подачи S2
 
-- [ ] **GitHub repo** public (this project): `https://github.com/_________________/bitget-bot`
-- [ ] **Demo video** (2–5 min): pitch → architecture → smoke/API → paper fill: `https://_________________`
+- [ ] **GitHub repo** public: `https://github.com/scanner72/bitget-bot` (or your fork)
+- [ ] **Demo video** (2–5 min): pitch → hub_demo execution → smoke/API → Demo dashboard: `https://_________________`
 - [ ] **X / Twitter post** with repo + video + #Bitget #AgentTrading: `https://x.com/_________________/status/_________________`
 - [ ] README (this file) EN+RU pitch + diagram + quickstart
 - [ ] Docker packaging (`Dockerfile`, `docker-compose.yml`) for judges
-- [ ] Confirm paper-only / no secrets in repo (`.env` gitignored)
+- [ ] Confirm Demo-only / no secrets in repo (`.env` gitignored)
 
 ---
 
@@ -235,14 +264,17 @@ Smoke:
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/health` | `{ "ok": true, "paper": true }` |
-| GET | `/positions` | Open paper positions |
+| GET | `/health` | `{ ok, paper, exec_mode, hub_demo, bitget_demo, hub_sync_exchange_sl }` |
+| GET | `/positions` | Open positions (Demo PnL/entry/mark when `hub_demo`) |
 | GET | `/decisions?limit=50` | Tail `data/decisions.jsonl` |
 | GET | `/fills?limit=50` | Tail `data/paper_fills.jsonl` |
 | GET | `/candidates?limit=50` | Tail `data/candidates.jsonl` |
-| GET | `/equity` | Paper account equity snapshot |
+| GET | `/equity` | Account snapshot (Demo equity overlay when `hub_demo`) |
 | GET | `/account` | Same as `/equity` |
-| GET | `/` | HTML dashboard |
+| GET | `/` | HTML dashboard (click open position or history row → LIVE chart) |
+| GET | `/chart` | Lightweight-charts page (v1 overlay: entry/SL/TP/exit on LIVE Bitget candles) |
+| GET | `/api/chart/data` | `{ candles, rsi, markers, zones }` from public Bitget OHLCV |
+| GET | `/history` | Closed trades for history chart clicks |
 
 ### Symbol display (Bitget-readable)
 
@@ -264,12 +296,14 @@ Default `AGENT_MODE=rules` — unchanged rules path. Set `AGENT_MODE=llm` to cal
 
 See `.env.example`. Important:
 
-- `PAPER=true` — keep on for S2 demo
+- `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `HUB_SYNC_EXCHANGE_SL=1` — recommended S2 demo stack
+- `PAPER=true` — keep on (paper shadow book always used)
+- `RISK_USD_PER_TRADE`, `MIN_NOTIONAL_USD`, `MAX_NOTIONAL_USD` — risk-to-SL sizing
 - `SYMBOLS`, `TIMEFRAME`, `POLL_SEC`, `ONCE`
 - Risk / agent knobs as in Risk controls above
 - `AGENT_MODE=rules|llm` (default `rules`). LLM optional for Agent Hub / hackathon demos — not required for success
 - When `llm`: `OPENAI_BASE_URL` (default `http://127.0.0.1:8787/v1` Headroom), `OPENAI_API_KEY`, `OPENAI_MODEL`; any failure → rules + `llm_fallback`
-- `BITGET_API_*` left empty for public OHLCV; do not commit real secrets
+- `BITGET_API_KEY` / `BITGET_SECRET_KEY` / `BITGET_PASSPHRASE` — Demo UTA keys in local `.env` only; do not commit
 
 ---
 
@@ -282,15 +316,15 @@ See `.env.example`. Important:
 - Submission checklist (GitHub TBD, X template, deadline **21 Sep**): [docs/SUBMISSION.md](docs/SUBMISSION.md)
 - Static API snapshots for screenshots: [docs/demo_artifacts/](docs/demo_artifacts/) (health.json, positions.json, decisions.json, fills.json, snapshot.html)
 
-Start API locally (paper):
+Start API locally (hub_demo):
 
 ```bash
 .venv\Scripts\python.exe -u scripts\run_api.py
 # pid optionally saved to data/api.pid
-# http://127.0.0.1:8080/health
+# http://127.0.0.1:8080/health  -> exec_mode hub_demo
 ```
 
 ## Disclaimer
 
-**EN:** Educational / hackathon paper scaffold. Not financial advice. No live trading in this repository path.  
-**RU:** Учебный / хакатонный paper-scaffold. Не инвестиционная рекомендация. Live-торговля в этом репозитории не включена.
+**EN:** Educational / hackathon demo on Bitget UTA Demo (`paptrading`). Not financial advice. Live mainnet blocked unless `BITGET_ALLOW_LIVE=1`.  
+**RU:** Учебный / хакатонный demo на Bitget Demo. Не инвестиционная рекомендация. Live mainnet по умолчанию выключен.

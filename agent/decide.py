@@ -47,6 +47,15 @@ def _agent_mode() -> str:
     return "rules"
 
 
+def _allow_long() -> bool:
+    """Long ENTER allowed when ALLOW_LONG=1 (v1 default: both sides)."""
+    return _env_str("ALLOW_LONG", "1").lower() in {"1", "true", "yes", "on"}
+
+
+def _allow_short() -> bool:
+    return _env_str("ALLOW_SHORT", "1").lower() in {"1", "true", "yes", "on"}
+
+
 def _rsi_thresholds() -> tuple[float, float]:
     """Overbought / oversold for extreme-RSI SKIP. Prefer signals.config."""
     ob, os_ = 70.0, 30.0
@@ -181,6 +190,38 @@ def decide_rules(
             "rules_fired": rules,
         }
 
+    # v1: longs only in RSI zone (pairs.rsi_long_max default 30)
+    rsi_long_max = _env_float("RSI_LONG_MAX", 30.0)
+    if side == "long" and rsi_long_max > 0 and rsi > rsi_long_max:
+        rules.append("rsi_long_zone")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": side,
+            "rationale": f"long RSI zone rsi={rsi:.1f}> {rsi_long_max:.0f}",
+            "rules_fired": rules,
+        }
+
+    # Side gate (v1 trades both; ALLOW_LONG=0 is opt-out)
+    if side == "long" and not _allow_long():
+        rules.append("long_veto")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": side,
+            "rationale": "long veto (ALLOW_LONG=0)",
+            "rules_fired": rules,
+        }
+    if side == "short" and not _allow_short():
+        rules.append("short_veto")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": side,
+            "rationale": "short veto (ALLOW_SHORT=0)",
+            "rules_fired": rules,
+        }
+
     # MVP: fixed size (confidence scaling hook later)
     rules.append("size_fixed")
     # REDUCE reserved for later position-management rules / LLM
@@ -196,10 +237,17 @@ def decide_rules(
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
-    """Parse strict JSON object; tolerate optional markdown fences."""
+    """Parse strict JSON object; tolerate fences and Qwen <think> traces."""
     s = (text or "").strip()
     if not s:
         raise ValueError("empty LLM content")
+    lower = s.lower()
+    if "<think>" in lower:
+        end = lower.find("</think>")
+        if end >= 0:
+            s = s[end + len("</think>") :].strip()
+        else:
+            raise ValueError("LLM content is unfinished <think> (raise max_tokens)")
     if s.startswith("```"):
         lines = s.splitlines()
         # drop first fence line and optional trailing fence
@@ -208,14 +256,10 @@ def _extract_json_object(text: str) -> dict[str, Any]:
         if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
         s = "\n".join(lines).strip()
-    # If still wrapped, take outermost {...}
-    if not s.startswith("{"):
-        start = s.find("{")
-        end = s.rfind("}")
-        if start < 0 or end <= start:
-            raise ValueError("no JSON object in LLM content")
-        s = s[start : end + 1]
-    obj = json.loads(s)
+    start = s.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in LLM content")
+    obj, _end = json.JSONDecoder().raw_decode(s[start:])
     if not isinstance(obj, dict):
         raise ValueError("LLM JSON root must be object")
     return obj
@@ -271,9 +315,9 @@ def _llm_chat_completions(
     base = _env_str("OPENAI_BASE_URL", "http://127.0.0.1:8787/v1").rstrip("/")
     api_key = _env_str("OPENAI_API_KEY", "")
     model = _env_str("OPENAI_MODEL", "gpt-4o-mini")
-    timeout = _env_float("OPENAI_TIMEOUT_SEC", 8.0)
+    timeout = _env_float("OPENAI_TIMEOUT_SEC", 20.0)
     if timeout <= 0:
-        timeout = 8.0
+        timeout = 20.0
 
     risk_summary = _risk_context_summary(context)
     user_payload = {
@@ -289,33 +333,77 @@ def _llm_chat_completions(
     system = (
         "You are a paper-trading decision agent. "
         "Given a signal candidate and risk context, choose ENTER, SKIP, or REDUCE. "
-        "Respond with strict JSON only - no markdown, no prose."
+        "Respond with a single JSON object only. No markdown, no thinking, no extra text. "
+        "The first character of the reply must be '{'."
     )
-    body = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": json.dumps(user_payload, ensure_ascii=False),
-            },
-        ],
-        "response_format": {"type": "json_object"},
-    }
+    messages = [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": json.dumps(user_payload, ensure_ascii=False),
+        },
+    ]
     url = f"{base}/chat/completions"
-    data = json.dumps(body).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "User-Agent": "bitget-desk/1.0",
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-        raw = resp.read().decode("utf-8", errors="replace")
-    envelope = json.loads(raw)
+    def _post(
+        with_json_object: bool, extra: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": model,
+            "temperature": 0,
+            "messages": messages,
+            "max_tokens": 800,
+        }
+        if with_json_object:
+            payload["response_format"] = {"type": "json_object"}
+        if extra:
+            payload.update(extra)
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            raw = resp.read().decode("utf-8", errors="replace")
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM envelope is not an object")
+        return parsed
+
+    use_json_object = "groq.com" not in base.lower()
+    extras: list[dict[str, Any] | None] = [None]
+    if "groq.com" in base.lower() and "qwen" in model.lower():
+        extras = [
+            {"chat_template_kwargs": {"enable_thinking": False}},
+            {"reasoning_effort": "none"},
+            None,
+        ]
+    envelope: dict[str, Any] | None = None
+    last_err: Exception | None = None
+    for extra in extras:
+        try:
+            envelope = _post(use_json_object, extra)
+            break
+        except urllib.error.HTTPError as exc:
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:400]
+            except Exception:
+                detail = str(exc.reason or "")
+            last_err = RuntimeError(f"LLM HTTP {exc.code}: {detail}")
+            if exc.code not in {400, 404, 422}:
+                raise last_err from exc
+            continue
+    if envelope is None:
+        raise last_err or RuntimeError("LLM request failed")
     choices = envelope.get("choices") or []
     if not choices:
         raise ValueError("LLM response missing choices")
@@ -332,7 +420,18 @@ def _llm_chat_completions(
         content = "".join(parts)
     if not isinstance(content, str):
         raise ValueError("LLM message content not a string")
-    parsed = _extract_json_object(content)
+    try:
+        parsed = _extract_json_object(content)
+    except Exception:
+        try:
+            dump = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "data", "_llm_last.txt"
+            )
+            with open(dump, "w", encoding="utf-8") as fh:
+                fh.write(content[:4000])
+        except Exception:
+            pass
+        raise
     return _validate_llm_decision(parsed)
 
 
