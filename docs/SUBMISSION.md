@@ -27,15 +27,16 @@ Track 1 prefers a public live or paper log. This desk publishes **Demo UTA + pap
 | [`docs/evidence/paper_trading_log.jsonl`](evidence/paper_trading_log.jsonl) | Same rows as JSONL |
 | [`docs/evidence/paper_trading_log.sample.csv`](evidence/paper_trading_log.sample.csv) | Sanitized `SIMULATED_DEMO` snapshot (native fill format in [`fixtures/`](evidence/fixtures/)) |
 
-Canonical log is **this** Bitget S2 desk (`hub_demo` / paper shadow / paper-live). It is not Divergent V1 paper history.
+Canonical log is **Bitget UTA Demo** for this S2 desk: `hub_demo` opens/closes plus paper-shadow closes of those same Demo positions. It is not paper-live fallback and not Divergent V1.
 
 ```bash
-python scripts/export_paper_log.py --from-desk                    # committed S2 fills
+python scripts/export_paper_log.py --from-desk                    # UTA Demo only
+python scripts/export_paper_log.py --from-desk --include-paper-live  # also PAPER_FALLBACK
 python scripts/export_paper_log.py                                # local data/paper_fills.jsonl if present
 python scripts/export_paper_log.py --from-sample --write-sample   # tiny SIMULATED_DEMO fixture
 ```
 
-`account_balance_change` is paper equity delta (`0` on open, realized PnL on close) using the same cash model as `exec/account.py`. `mode` is `hub_demo`, `paper_shadow`, or `paper_live`. Paper-live PnL is **not** Demo equity.
+`account_balance_change` is reconstructed Demo-venue equity delta (`0` on open, realized PnL on close) using the same cash model as `exec/account.py`. It is not a Bitget wallet snapshot. `mode` is `hub_demo` or `paper_shadow` (local close of a Demo position). Paper-live PnL is **not** in this file.
 
 ---
 

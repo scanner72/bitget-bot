@@ -193,6 +193,22 @@ def infer_mode(fill: dict[str, Any]) -> str:
     return "paper_shadow"
 
 
+def keep_uta_demo_fills(raw_fills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep fills for positions that hit Bitget UTA Demo. Drop paper-live fallback."""
+    tagged: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    for raw in raw_fills:
+        row = normalize_fill(raw)
+        if row is None:
+            continue
+        tagged.append((raw, row, infer_mode(row)))
+    hub_pids = {
+        str(row.get("position_id") or "")
+        for _raw, row, mode in tagged
+        if mode == "hub_demo" and row.get("position_id")
+    }
+    return [raw for raw, row, _mode in tagged if str(row.get("position_id") or "") in hub_pids]
+
+
 def _decision_index(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     idx: dict[str, dict[str, Any]] = {}
     for rec in rows:
@@ -344,8 +360,11 @@ def export_log(
     start_balance: float,
     label: str,
     write_sample: bool = False,
+    demo_only: bool = False,
 ) -> list[dict[str, Any]]:
     fills = _load_json_records(fills_path)
+    if demo_only:
+        fills = keep_uta_demo_fills(fills)
     decisions = _load_json_records(decisions_path) if decisions_path else []
     rows = build_rows(fills, decisions=decisions, start_balance=start_balance, label=label)
     write_csv(out_csv, rows)
@@ -384,6 +403,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Read this desk's committed fills (fixtures/paper_fills.desk.jsonl).",
     )
     ap.add_argument(
+        "--demo-only",
+        action="store_true",
+        help="Keep only UTA Demo positions (hub_demo + shadow closes of those). Drop paper-live.",
+    )
+    ap.add_argument(
+        "--include-paper-live",
+        action="store_true",
+        help="Do not drop PAPER_FALLBACK fills (overrides --from-desk demo-only default).",
+    )
+    ap.add_argument(
         "--write-sample",
         action="store_true",
         help="Also write paper_trading_log.sample.csv / .jsonl",
@@ -415,6 +444,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     start = start_balance_from_env(args.start_balance)
+    demo_only = bool(args.demo_only or args.from_desk) and not bool(args.include_paper_live)
+    if args.from_sample:
+        demo_only = False
     rows = export_log(
         fills_path=fills,
         decisions_path=decisions,
@@ -423,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
         start_balance=start,
         label=label,
         write_sample=bool(args.write_sample),
+        demo_only=demo_only,
     )
     realized = 0.0
     for row in rows:
@@ -431,6 +464,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"exported {len(rows)} rows from {fills} ({origin}) "
         f"label={label} start_balance={start} realized_pnl={realized:.4f}"
+        f"{' demo_only=1' if demo_only else ''}"
     )
     print(f"csv   {args.out_csv}")
     print(f"jsonl {args.out_jsonl}")
