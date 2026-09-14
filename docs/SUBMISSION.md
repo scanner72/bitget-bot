@@ -13,6 +13,28 @@
 - [ ] README EN+RU pitch, architecture, hub_demo quickstart, API table
 - [ ] Docker: `Dockerfile`, `docker-compose.yml` (optional for judges)
 - [ ] Links: [`docs/DEMO.md`](DEMO.md) + this file + [`docs/CURSOR_HANDOFF.md`](CURSOR_HANDOFF.md)
+- [x] **Paper / Demo trading log (Track 1 required):** [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv) — fields `timestamp`, `trading_pair`, `direction`, `price`, `quantity`, `account_balance_change`, plus `status` / `mode`. How to regenerate: [`docs/evidence/README.md`](evidence/README.md)
+
+---
+
+## Paper / Demo trading log
+
+Track 1 prefers a public live or paper log. This desk publishes **Demo UTA + paper shadow**, not live mainnet.
+
+| File | Use |
+|------|-----|
+| [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv) | Canonical log for the form / judges |
+| [`docs/evidence/paper_trading_log.jsonl`](evidence/paper_trading_log.jsonl) | Same rows as JSONL |
+| [`docs/evidence/paper_trading_log.sample.csv`](evidence/paper_trading_log.sample.csv) | Sanitized `SIMULATED_DEMO` snapshot (native fill format in [`fixtures/`](evidence/fixtures/)) |
+
+Export from gitignored local `data/paper_fills.jsonl` (and optional `data/decisions.jsonl`):
+
+```bash
+python scripts/export_paper_log.py
+python scripts/export_paper_log.py --from-sample --write-sample   # offline fixture
+```
+
+`account_balance_change` is paper equity delta (`0` on open, realized PnL on close) using the same cash model as `exec/account.py`. `mode` is `hub_demo`, `paper_shadow`, or `paper_live`. Paper-live PnL is **not** Demo equity.
 
 ---
 
@@ -61,6 +83,7 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 - [ ] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true
 - [ ] Dashboard `/` + `/positions` (Demo PnL) + `/decisions` + `/account` (equity overlay)
 - [ ] Optional: `docker compose up -d`
+- [ ] Evidence log: `python scripts/export_paper_log.py` (or `--from-sample`) → [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv)
 
 ---
 
@@ -73,7 +96,8 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | GitHub | `https://github.com/scanner72/bitget-bot` |
 | Demo video | TBD |
 | X post | TBD |
-| Notes | Bitget Demo UTA via Agent Hub (`paptrading`); public OHLCV via ccxt; live mainnet disabled |
+| Paper / Demo trading log | `https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/paper_trading_log.csv` |
+| Notes | Bitget Demo UTA via Agent Hub (`paptrading`); public OHLCV via ccxt; live mainnet disabled. Log is Demo/paper, not live. |
 
 ---
 
@@ -86,4 +110,4 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | Refresh `docs/demo_artifacts/` before screenshots | Claim live mainnet trading |
 | Link README + DEMO + handoff | Kill healthy overnight `--poll` without reason |
 
-**Status:** docs aligned with `hub_demo` stack (commit `7473d5a`+). Video not produced in-repo.
+**Status:** docs aligned with `hub_demo` stack. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv). Video not produced in-repo.
