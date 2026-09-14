@@ -30,4 +30,4 @@ docker compose up -d --build
 
 Windows: `.\start.ps1`. Смоки без сети: `.\test.ps1`. Полная таблица риска и API — в английском README и `docs/`.
 
-Публичный лог paper/Demo (не live mainnet): [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv). Поля чеклиста Track 1: timestamp, pair, direction, price, quantity, account balance change. Регенерация: `python scripts/export_paper_log.py --from-sample`.
+Публичный лог paper/Demo **этого** стола (не live mainnet, не Divergent V1): [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv). Поля чеклиста Track 1: timestamp, pair, direction, price, quantity, account balance change. Регенерация: `python scripts/export_paper_log.py --from-desk`.

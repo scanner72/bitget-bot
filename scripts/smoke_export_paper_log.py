@@ -21,6 +21,8 @@ if str(ROOT) not in sys.path:
 SCRIPT = ROOT / "scripts" / "export_paper_log.py"
 FIXTURE = ROOT / "docs" / "evidence" / "fixtures" / "paper_fills.sample.jsonl"
 DECISIONS = ROOT / "docs" / "evidence" / "fixtures" / "decisions.sample.jsonl"
+DESK_FILLS = ROOT / "docs" / "evidence" / "fixtures" / "paper_fills.desk.jsonl"
+COMMITTED_CSV = ROOT / "docs" / "evidence" / "paper_trading_log.csv"
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -255,6 +257,90 @@ def main() -> int:
             text=True,
         )
         _assert(rc_live.returncode == 2, rc_live.stdout + rc_live.stderr)
+
+        rc_both = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--from-sample",
+                "--from-desk",
+                "--out-csv",
+                str(tmp_path / "both.csv"),
+                "--out-jsonl",
+                str(tmp_path / "both.jsonl"),
+            ],
+            check=False,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+        )
+        _assert(rc_both.returncode == 2, rc_both.stdout + rc_both.stderr)
+
+        _assert(DESK_FILLS.exists(), f"missing {DESK_FILLS}")
+        desk_native = [
+            json.loads(line)
+            for line in DESK_FILLS.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        _assert(len(desk_native) >= 50, f"desk fixture too small: {len(desk_native)}")
+        for rec in desk_native:
+            pid = str(rec.get("position_id") or "")
+            fid = str(rec.get("fill_id") or "")
+            _assert(not pid.startswith("div_v1_"), pid)
+            _assert(not fid.startswith("div_v1_"), fid)
+            blob = json.dumps(rec, ensure_ascii=False).lower()
+            _assert("divergent_v1" not in blob, rec)
+            _assert("divergent_paper_trades" not in blob, rec)
+
+        desk_csv = tmp_path / "desk.csv"
+        desk_jsonl = tmp_path / "desk.jsonl"
+        rc_desk = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--from-desk",
+                "--out-csv",
+                str(desk_csv),
+                "--out-jsonl",
+                str(desk_jsonl),
+                "--start-balance",
+                "10000",
+            ],
+            check=False,
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+        )
+        print(rc_desk.stdout)
+        _assert(rc_desk.returncode == 0, rc_desk.stderr or rc_desk.stdout)
+        desk_rows = _read_csv(desk_csv)
+        _assert(len(desk_rows) == len(desk_native), (len(desk_rows), len(desk_native)))
+        _assert(all(r["label"] == "DEMO" for r in desk_rows), desk_rows[0])
+        _assert(float(desk_rows[0]["equity_after"]) == 10000.0, desk_rows[0])
+        modes = {r["mode"] for r in desk_rows}
+        _assert(modes <= {"hub_demo", "paper_shadow", "paper_live"}, modes)
+        _assert("hub_demo" in modes, modes)
+
+        committed = _read_csv(COMMITTED_CSV)
+        _assert(len(committed) == len(desk_rows), (len(committed), len(desk_rows)))
+        _assert(
+            all(not (r.get("position_id") or "").startswith("div_v1_") for r in committed),
+            "committed log still contains Divergent V1 ids",
+        )
+        committed_ids = [r["fill_id"] for r in committed]
+        desk_ids = [r["fill_id"] for r in desk_rows]
+        _assert(committed_ids == desk_ids, (committed_ids[:3], desk_ids[:3]))
+
+        fills, _dec, label, origin = mod.resolve_inputs(
+            fills_path=None,
+            decisions_path=None,
+            from_sample=False,
+            from_desk=False,
+        )
+        _assert(label == "DEMO", label)
+        _assert(origin in {"local_data", "desk_fixture"}, origin)
+        if origin == "desk_fixture":
+            _assert(fills == DESK_FILLS, fills)
 
     print("smoke_export_paper_log OK")
     return 0

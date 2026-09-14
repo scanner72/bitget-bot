@@ -27,11 +27,12 @@ Track 1 prefers a public live or paper log. This desk publishes **Demo UTA + pap
 | [`docs/evidence/paper_trading_log.jsonl`](evidence/paper_trading_log.jsonl) | Same rows as JSONL |
 | [`docs/evidence/paper_trading_log.sample.csv`](evidence/paper_trading_log.sample.csv) | Sanitized `SIMULATED_DEMO` snapshot (native fill format in [`fixtures/`](evidence/fixtures/)) |
 
-Export from gitignored local `data/paper_fills.jsonl` (and optional `data/decisions.jsonl`):
+Canonical log is **this** Bitget S2 desk (`hub_demo` / paper shadow / paper-live). It is not Divergent V1 paper history.
 
 ```bash
-python scripts/export_paper_log.py
-python scripts/export_paper_log.py --from-sample --write-sample   # offline fixture
+python scripts/export_paper_log.py --from-desk                    # committed S2 fills
+python scripts/export_paper_log.py                                # local data/paper_fills.jsonl if present
+python scripts/export_paper_log.py --from-sample --write-sample   # tiny SIMULATED_DEMO fixture
 ```
 
 `account_balance_change` is paper equity delta (`0` on open, realized PnL on close) using the same cash model as `exec/account.py`. `mode` is `hub_demo`, `paper_shadow`, or `paper_live`. Paper-live PnL is **not** Demo equity.
@@ -83,7 +84,7 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 - [ ] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true
 - [ ] Dashboard `/` + `/positions` (Demo PnL) + `/decisions` + `/account` (equity overlay)
 - [ ] Optional: `docker compose up -d`
-- [ ] Evidence log: `python scripts/export_paper_log.py` (or `--from-sample`) → [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv)
+- [ ] Evidence log: `python scripts/export_paper_log.py --from-desk` → [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv)
 
 ---
 
