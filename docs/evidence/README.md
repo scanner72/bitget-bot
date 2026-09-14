@@ -18,10 +18,11 @@ This folder is that log. **It is not live mainnet.**
 
 | File | Role |
 |------|------|
-| [`paper_trading_log.csv`](paper_trading_log.csv) | Canonical checklist CSV (same rows as the sample until you re-export from a local desk) |
+| [`paper_trading_log.csv`](paper_trading_log.csv) | Canonical checklist CSV for **this** Bitget S2 desk (`hub_demo` + paper shadow + paper-live fallback). Not Divergent V1. |
 | [`paper_trading_log.jsonl`](paper_trading_log.jsonl) | Same rows, one JSON object per line |
 | [`paper_trading_log.sample.csv`](paper_trading_log.sample.csv) | Sanitized **SIMULATED_DEMO** snapshot, always labeled |
-| [`fixtures/paper_fills.sample.jsonl`](fixtures/paper_fills.sample.jsonl) | Native `exec/paper.py` fill format used to generate the sample |
+| [`fixtures/paper_fills.desk.jsonl`](fixtures/paper_fills.desk.jsonl) | Native fills from this desk (source for the canonical log) |
+| [`fixtures/paper_fills.sample.jsonl`](fixtures/paper_fills.sample.jsonl) | Tiny offline fixture for `--from-sample` |
 
 Dashboard dumps (not the checklist log): [`docs/demo_artifacts/`](../demo_artifacts/).
 
@@ -43,14 +44,22 @@ Checklist fields first, then desk extras:
 | `size_usd` | Notional locked |
 | `realized_pnl` | Close PnL (0 on open) |
 | `cash_change` / `cash_after` / `equity_after` | Reconstructed from `PAPER_START_BALANCE_USD` (default `10000`) |
-| `label` | `SIMULATED_DEMO` (fixture) or `DEMO` (local `data/`) |
+| `label` | `DEMO` (this desk) or `SIMULATED_DEMO` (`--from-sample`) |
 | `signal_type` | From fill `meta.type` or joined `decisions.jsonl` |
 
 PnL on a close is the linear paper formula: long `size_usd * (exit/entry - 1)`; short inverted (`exec/paper.py`).
 
 ## Regenerate
 
-Offline, from the committed fixture (no `data/`, no keys):
+This desk’s committed fills (no `data/`, no keys, **not** Divergent V1):
+
+```bash
+python scripts/export_paper_log.py --from-desk
+# writes docs/evidence/paper_trading_log.csv and .jsonl
+# label=DEMO — Bitget Demo UTA / paper shadow / paper-live, not live mainnet
+```
+
+Tiny offline sample (does **not** replace the canonical desk log unless you pass `--out-csv`):
 
 ```bash
 python scripts/export_paper_log.py --from-sample --write-sample
@@ -60,11 +69,10 @@ From a real local desk run (`data/` is gitignored):
 
 ```bash
 python scripts/export_paper_log.py
-# reads data/paper_fills.jsonl + data/decisions.jsonl
-# writes docs/evidence/paper_trading_log.csv and .jsonl
-# label=DEMO  — still Demo/paper, not live mainnet
+# reads data/paper_fills.jsonl + data/decisions.jsonl when present
+# otherwise falls back to fixtures/paper_fills.desk.jsonl
 ```
 
 Optional: `--fills path` (JSONL or `{"fills":[...]}` as in `GET /fills`), `--start-balance 10000`.
 
-The exporter refuses `--label LIVE` / `MAINNET`. Do not commit `.env` or `data/`.
+The exporter refuses `--label LIVE` / `MAINNET`. Do not commit `.env` or `data/`. Do not merge Divergent V1 paper trades into this log.

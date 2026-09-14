@@ -122,13 +122,14 @@ Bitget S2 Trading Agent checklist: timestamp, trading pair, direction, price, qu
 
 | File | Role |
 |------|------|
-| [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv) | Public Demo/paper log (**not live mainnet**) |
+| [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv) | Public Demo/paper log for **this** S2 desk (**not live mainnet**, not Divergent V1) |
 | [`docs/evidence/README.md`](docs/evidence/README.md) | Field map + how to regenerate |
 | [`docs/evidence/paper_trading_log.sample.csv`](docs/evidence/paper_trading_log.sample.csv) | `SIMULATED_DEMO` snapshot from native fills |
 
 ```bash
-python scripts/export_paper_log.py                  # from local data/paper_fills.jsonl
-python scripts/export_paper_log.py --from-sample    # offline fixture, no keys
+python scripts/export_paper_log.py --from-desk      # this desk's committed fills
+python scripts/export_paper_log.py                  # local data/paper_fills.jsonl, else desk fixture
+python scripts/export_paper_log.py --from-sample    # tiny offline fixture, no keys
 ```
 
 ---

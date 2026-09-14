@@ -27,6 +27,7 @@ DEFAULT_FILLS = ROOT / "data" / "paper_fills.jsonl"
 DEFAULT_DECISIONS = ROOT / "data" / "decisions.jsonl"
 SAMPLE_FILLS = ROOT / "docs" / "evidence" / "fixtures" / "paper_fills.sample.jsonl"
 SAMPLE_DECISIONS = ROOT / "docs" / "evidence" / "fixtures" / "decisions.sample.jsonl"
+DESK_FILLS = ROOT / "docs" / "evidence" / "fixtures" / "paper_fills.desk.jsonl"
 DEFAULT_CSV = ROOT / "docs" / "evidence" / "paper_trading_log.csv"
 DEFAULT_JSONL = ROOT / "docs" / "evidence" / "paper_trading_log.jsonl"
 SAMPLE_CSV = ROOT / "docs" / "evidence" / "paper_trading_log.sample.csv"
@@ -296,15 +297,22 @@ def resolve_inputs(
     fills_path: Path | None,
     decisions_path: Path | None,
     from_sample: bool,
+    from_desk: bool = False,
 ) -> tuple[Path, Path | None, str, str]:
     """Return (fills, decisions|None, label_hint, note)."""
     if from_sample:
         return SAMPLE_FILLS, SAMPLE_DECISIONS if SAMPLE_DECISIONS.exists() else None, "SIMULATED_DEMO", "fixture"
+    if from_desk:
+        return DESK_FILLS, None, "DEMO", "desk_fixture"
     fills = Path(fills_path) if fills_path else DEFAULT_FILLS
     decisions = Path(decisions_path) if decisions_path else DEFAULT_DECISIONS
     if fills.exists() and _load_json_records(fills):
         dec = decisions if decisions.exists() else None
         return fills, dec, "DEMO", "local_data"
+    # Prefer this desk's committed fills over the 7-row SIMULATED_DEMO sample
+    # so a clone without gitignored data/ does not wipe the public S2 log.
+    if DESK_FILLS.exists() and _load_json_records(DESK_FILLS):
+        return DESK_FILLS, None, "DEMO", "desk_fixture"
     if SAMPLE_FILLS.exists():
         return (
             SAMPLE_FILLS,
@@ -371,18 +379,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Read docs/evidence/fixtures/*.sample.jsonl (offline, no data/).",
     )
     ap.add_argument(
+        "--from-desk",
+        action="store_true",
+        help="Read this desk's committed fills (fixtures/paper_fills.desk.jsonl).",
+    )
+    ap.add_argument(
         "--write-sample",
         action="store_true",
         help="Also write paper_trading_log.sample.csv / .jsonl",
     )
     args = ap.parse_args(argv)
+    if args.from_sample and args.from_desk:
+        print("error: use only one of --from-sample / --from-desk")
+        return 2
 
     fills, decisions, default_label, origin = resolve_inputs(
         fills_path=args.fills,
         decisions_path=args.decisions,
         from_sample=bool(args.from_sample),
+        from_desk=bool(args.from_desk),
     )
-    if args.fills is not None and not args.from_sample:
+    if args.fills is not None and not args.from_sample and not args.from_desk:
         fills = args.fills
         origin = "cli"
         default_label = "DEMO"
