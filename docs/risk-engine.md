@@ -1,46 +1,46 @@
-# 🛡️ Mathematical Risk Management Engine
+# Risk engine
 
-The **Risk Engine** in Bitget S2 Divergent Agent Desk is responsible for capital preservation, position sizing, exposure bounds, and execution circuit breakers.
+Code: `risk/gate.py`, `risk/sizing.py`, `risk/exits.py`, `risk/atr.py`. Values below are **this desk’s `.env.example`**. If a var is unset, some code paths still fall back to risk `$2` / max notional `$100`.
 
----
+## Limits
 
-## 1. Risk Control Parameters
+| Control | Env | Desk |
+|---------|-----|------|
+| Dollar risk if SL hits | `RISK_USD_PER_TRADE` | `10` |
+| Max notional | `MAX_NOTIONAL_USD` | `500` |
+| Min notional | `MIN_NOTIONAL_USD` | `10` |
+| Daily loss halt (UTC day) | `MAX_DAILY_LOSS_USD` | `50` |
+| Max open positions | `MAX_POSITIONS` | `15` |
+| One position per symbol | `ONE_POSITION_PER_SYMBOL` | true |
+| Re-entry cooldown | `COOLDOWN_SEC` | `900` |
+| Signal types | `ALLOWED_TYPES` | `BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
+| Longs only if RSI ≤ | `RSI_LONG_MAX` | `30` |
+| RSI skip extremes | `RSI_OVERBOUGHT` / `RSI_OVERSOLD` | `70` / `30` |
+| Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
+| Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` |
+| Timeframe blocker | `TF_BLOCKER_ENABLED` | `0` — do not enable; 15m is the only TF |
 
-All risk parameters are configured via environment variables in `.env`:
+State: `data/risk_state.json`, `data/pair_blocks.json` (gitignored).
 
-| Parameter | Environment Variable | Default Value | Description |
-|:---|:---|:---:|:---|
-| **Risk Per Trade** | `RISK_USD_PER_TRADE` | `$2.00` | Target dollar loss if position hits Stop-Loss. |
-| **Max Notional** | `MAX_NOTIONAL_USD` | `$100.00` | Hard cap on total position notional size. |
-| **Min Notional** | `MIN_NOTIONAL_USD` | `$10.00` | Minimum viable notional required to submit an order. |
-| **Daily Loss Limit** | `MAX_DAILY_LOSS_USD` | `$50.00` | Global killswitch halting all entries if exceeded. |
-| **Max Open Positions** | `MAX_POSITIONS` | `8` | Maximum concurrent active positions allowed. |
-| **Single Symbol Limit** | `ONE_POSITION_PER_SYMBOL` | `true` | Prevents pyramiding or doubling down on same ticker. |
-| **Cooldown Period** | `COOLDOWN_SEC` | `900` (15 min) | Time delay required before re-entering the same symbol. |
-| **Signal Type Filter** | `ALLOWED_TYPES` | All | Restricts signals (e.g. `BULLISH_DIV,BEARISH_DIV`). |
+## Sizing
 
----
+```
+dist = |entry - sl| / entry
+notional = clamp(RISK_USD_PER_TRADE / dist, MIN_NOTIONAL_USD, MAX_NOTIONAL_USD)
+```
 
-## 2. Risk-to-SL Dynamic Sizing Formula
+Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`.
 
-Rather than trading arbitrary fixed quantities, position notional is mathematically calculated from the distance between Entry and Stop-Loss:
+## ATR exits (paper shadow + exchange parachute)
 
-$$\text{SL Distance Ratio} = \frac{|\text{Entry Price} - \text{SL Price}|}{\text{Entry Price}}$$
+On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * 0.02)`.
 
-$$\text{Calculated Notional (USD)} = \frac{\text{RISK\_USD\_PER\_TRADE}}{\text{SL Distance Ratio}}$$
+- Long: SL = entry − 1×ATR, TP1 = +1.5×ATR, TP2 = +2.5×ATR (short mirrored).
+- Skip open if `atr_pct` &lt; 0.3% or &gt; 6%.
+- Exchange gets **SL + TP2** on open (`HUB_SYNC_EXCHANGE_SL=1` also pushes SL after BE/trail).
+- **TP1** does not flatten 50%. It marks `tp1_hit`, moves SL to breakeven, starts trail; position stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`).
+- Tick path: `TICK_STOPS=1` evaluates open positions on each WS quote; 30s loop is backup.
 
-$$\text{Final Notional} = \max(\text{MIN\_NOTIONAL\_USD}, \min(\text{MAX\_NOTIONAL\_USD}, \text{Calculated Notional}))$$
+## BTC / pair policy
 
-### Practical Example:
-- Entry: **BTC at $60,000**
-- Stop-Loss: **$59,400** (1.0% distance = 0.01)
-- Risk Target: **$2.00**
-- Raw Sizing: $\$2.00 / 0.01 = \$200.00$
-- Constrained by `MAX_NOTIONAL_USD = $100.00` ➔ Final Notional: **$100.00** (Actual max loss = $1.00).
-
----
-
-## 3. Circuit Breakers & State Persistence
-
-- **Daily Loss Guard**: The risk engine tracks cumulative closed PnL + open unrealized losses. If losses hit `MAX_DAILY_LOSS_USD`, all pending orders are blocked until 00:00 UTC.
-- **State File (`data/risk_state.json`)**: Persists daily loss counters and active cooldown timestamps across process restarts.
+See `.cursor/rules/btc-filters-policy.mdc`. Regime TF **1h**, EMA50 off, both sides on. Pair blocker stays. Do not re-enable a 15m TF ban.

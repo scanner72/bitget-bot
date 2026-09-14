@@ -32,7 +32,7 @@ Artifacts: `docs/demo_artifacts/` (`health.json`, `positions.json`, …).
 ```
 Built a Divergent Agent Desk for @Bitget #Bitget #AgentTrading #BitgetHackathon
 
-Public OHLCV → RSI divergence → rules agent → risk gate → Bitget Demo UTA (hub_demo) + dashboard :8080
+Public OHLCV → RSI / level-cross → rules or LLM decide → risk gate → Bitget Demo UTA (hub_demo) + dashboard :8080
 
 Repo: https://github.com/scanner72/bitget-bot
 Demo: https://_________________
@@ -43,7 +43,7 @@ Demo: https://_________________
 RU variant:
 
 ```
-Agent desk для Bitget S2: публичный OHLCV → сигналы → rules + risk → Bitget Demo UTA (не live mainnet) → дашборд :8080.
+Agent desk для Bitget S2: публичный OHLCV → сигналы → rules/LLM + risk → Bitget Demo UTA (не live mainnet) → дашборд :8080.
 
 Репо: https://github.com/scanner72/bitget-bot
 Видео: https://_________________

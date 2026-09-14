@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo -e "\n\033[36m🧪 Running Bitget S2 Divergent Agent Desk Test Suite...\033[0m"
+if [ -x ".venv/bin/python" ]; then
+  PY=".venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="python3"
+else
+  PY="python"
+fi
 
-echo -e "\n\033[33m[1/2] Running Risk Gate Smoke Test...\033[0m"
-python scripts/smoke_risk.py
+smokes=(
+  scripts/smoke_signal.py
+  scripts/smoke_risk.py
+  scripts/smoke_decide.py
+  scripts/smoke_llm_decide.py
+  scripts/smoke_paper.py
+  scripts/smoke_account.py
+  scripts/smoke_exits.py
+  scripts/smoke_pair_blocker.py
+  scripts/smoke_symbols.py
+  scripts/smoke_upnl.py
+  scripts/smoke_tick_stops.py
+  scripts/smoke_paper_fallback.py
+  scripts/smoke_reconcile.py
+  scripts/smoke_chart.py
+)
 
-echo -e "\n\033[33m[2/2] Running Paper Shadow Book Smoke Test...\033[0m"
-python scripts/smoke_paper.py
-
-echo -e "\n\033[32m✅ Test suite execution complete.\033[0m"
+echo "Smokes via $PY"
+for s in "${smokes[@]}"; do
+  echo "  $s"
+  "$PY" "$s"
+done
+echo "All smokes passed."

@@ -1,26 +1,27 @@
-<!-- CONTEXT-SYNC-START -->
-## 🔄 Multi-Agent Sync (ContextSync)
-> 🕒 Project: **Bitget-Divergent-Agent-Desk** | 🤖 Fleet: **Cursor, Claude, Antigravity, Windsurf**
+# Bitget S2 Divergent Agent Desk
 
-### 🧠 Central Knowledge Store:
-- Find shared decisions: invoke `context_search(query="...", project="bitget-bot")`
-- Save architecture decisions: invoke `context_save(title="...", content="...", project="bitget-bot")`
-<!-- CONTEXT-SYNC-END -->
+Python 3.11+, FastAPI, CCXT, public Bitget OHLCV, Demo UTA execution (`hub_demo`).
 
-# Bitget Divergent Agent Desk: Agent Rules & Conventions
+## Safety
 
-You are working on **Bitget S2 Divergent Agent Desk**, an autonomous quantitative trading agent built with Python, FastAPI, and CCXT for Bitget Universal Trading Accounts (UTA).
+- Default `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`. Do not enable live.
+- Never bypass `risk/gate.py`. Size with `risk/sizing.py`.
+- Do not commit `.env` or `data/*.jsonl` / `data/*.json`.
+- Do not mutate `C:\divergent`.
+- `TF_BLOCKER_ENABLED=0` — do not ban `15m`. Pair blocker stays on.
+- `BTC_REGIME_TF=1h`, `BTC_EMA50_FILTER_ENABLED=0`. Policy: `.cursor/rules/btc-filters-policy.mdc`.
+- Paper-live (`PAPER_FALLBACK`) PnL is not Demo equity.
 
-## 🛠️ Tech Stack & Directory Boundaries
-- `ingest/`: WebSocket & REST market data ingestion for public OHLCV candles.
-- `signals/`: 14-period RSI calculations, swing extrema, and divergence detection algorithms.
-- `agent/`: Decision engine (`ENTER`, `SKIP`, `REDUCE`) via deterministic rules or LLM.
-- `risk/`: Mathematical risk gate (`gate.py`), dynamic risk-to-SL sizing (`sizing.py`), and circuit breakers.
-- `exec/`: Multi-mode execution router (`router.py`), Bitget UTA connector (`bitget_hub.py`), and paper shadow book (`paper.py`).
-- `api/`: FastAPI web dashboard and REST telemetry on port `8080`.
+## Layout
 
-## ⚠️ Core Engineering Directives
-1. **Never bypass Risk Gate**: All market orders must be sized to Stop-Loss distance using `risk/sizing.py`.
-2. **Strict Mode Separation**: Default mode is `EXEC_MODE=hub_demo`. Never trigger live execution without explicit `BITGET_ALLOW_LIVE=1`.
-3. **Public Data Priority**: Candle streaming must remain unauthenticated public data. API keys are reserved solely for execution routing.
-4. **Clean Code**: Use Python type annotations, dataclasses, and non-blocking async loops.
+`ingest/` candles · `signals/` RSI div + level-cross · `desk/` loop · `agent/decide.py` · `risk/` · `exec/` router+hub+paper · `api/app.py` `:8080`.
+
+## Commands
+
+```
+docker compose up -d --build
+.\test.ps1
+python scripts/run_signal_loop.py --once
+```
+
+There is no Context Sync MCP in this workspace.

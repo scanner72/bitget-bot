@@ -24,6 +24,7 @@ def _assert(cond: bool, msg: str) -> None:
 def _rules_mode() -> None:
     os.environ["AGENT_MODE"] = "rules"
     os.environ["PROPOSED_SIZE_USD"] = "50"
+    os.environ["RSI_LONG_MAX"] = "0"
     # Point LLM at nowhere so accidental llm path would fail loudly if mis-routed
     os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:1/v1"
     os.environ["OPENAI_TIMEOUT_SEC"] = "1"
@@ -59,6 +60,7 @@ def _rules_mode() -> None:
 def _llm_fallback_mode() -> None:
     os.environ["AGENT_MODE"] = "llm"
     os.environ["PROPOSED_SIZE_USD"] = "50"
+    os.environ["RSI_LONG_MAX"] = "0"
     # Unreachable port - connection refused / timeout
     os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:1/v1"
     os.environ["OPENAI_API_KEY"] = "test-key"

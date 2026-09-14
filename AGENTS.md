@@ -1,33 +1,22 @@
-<!-- CONTEXT-SYNC-START -->
-## 🔄 Multi-Agent Sync (ContextSync)
-> 🕒 Project: **Bitget-Divergent-Agent-Desk** | 🤖 Fleet: **Cursor, Claude, Antigravity, Windsurf**
+# Agent notes — Bitget S2 Divergent Agent Desk
 
-### 🧠 Central Knowledge Store:
-- Find shared decisions: invoke `context_search(query="...", project="bitget-bot")`
-- Save architecture decisions: invoke `context_save(title="...", content="...", project="bitget-bot")`
-<!-- CONTEXT-SYNC-END -->
+Hackathon desk: public Bitget OHLCV → signals → decide → risk → **UTA Demo** (`hub_demo`) + paper shadow → `:8080`.
 
-# 🤖 Bitget Divergent Agent Desk: AI Agent Fleet Guidelines & Rules
+## Do
 
-This document defines the operating rules, boundaries, and safety constraints for AI Agents (Antigravity, Cursor, Claude, Windsurf) working on the Bitget Divergent Agent Desk platform.
+- Keep `BITGET_ALLOW_LIVE=0`.
+- Size every entry through `risk/sizing.py`; gate through `risk/gate.py`.
+- Prefer `.env.example` numbers (`RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15`) over stale code fallbacks.
+- Leave `TF_BLOCKER_ENABLED=0`. Pair blocker on.
+- Treat paper-live fills as a separate book from Demo equity.
 
----
+## Do not
 
-## 🧭 1. General Project Context
-- **Name**: Bitget S2 Divergent Agent Desk
-- **Domain**: Quantitative algorithmic trading agent with RSI-momentum divergence signals, mathematical risk gates, Bitget Demo UTA routing, and shadow book soft exits.
-- **Key Safety Rule**: Trading derivatives carries substantial financial risk. The codebase defaults strictly to `EXEC_MODE=hub_demo` and `BITGET_DEMO=1`.
+- Commit secrets or `data/` runtime logs.
+- Re-enable a 15m timeframe ban.
+- Invent API fields; copy `api/app.py`.
+- Assume Context Sync MCP exists here. It does not.
 
----
+## Stack
 
-## 💻 2. Technical Stack & Rules
-
-### 🐍 Backend & Agent Engine (Python 3.11+)
-- **Frameworks**: FastAPI, Uvicorn, CCXT, NumPy, Pandas, WebSockets.
-- **Risk Gate**: Every single trade must be audited by `risk/gate.py`. Bypassing the risk gate is strictly prohibited.
-- **Demo Mode**: Real orders must only be placed on the Bitget Universal Trading Account Demo endpoint (`paptrading`).
-
-### 🛡️ 3. State & Memory Conventions
-- Decisions are appended to `data/decisions.jsonl`.
-- Risk state is saved to `data/risk_state.json`.
-- Do not commit runtime JSONL or JSON files located in `data/`.
+Python 3.11+, FastAPI, Uvicorn, CCXT, NumPy, Pandas, WebSockets. No `tests/` tree — use `scripts/smoke_*.py`.

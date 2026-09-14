@@ -1,17 +1,39 @@
-# ==============================================================================
-# Bitget S2 Divergent Agent Desk - Automated Test Suite
-# ==============================================================================
-$ErrorActionPreference = "Continue"
+# Bitget S2 — offline smoke suite
+$ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -Path $ScriptDir
 
-Write-Host "`n🧪 Running Bitget S2 Divergent Agent Desk Test Suite..." -ForegroundColor Cyan
+$py = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+if (-not (Test-Path $py)) {
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $cmd) { throw "Python not found" }
+    $py = $cmd.Source
+}
 
-# 1. Smoke Tests
-Write-Host "`n[1/2] Running Risk Gate Smoke Test..." -ForegroundColor Yellow
-python scripts/smoke_risk.py
+$smokes = @(
+    "scripts/smoke_signal.py",
+    "scripts/smoke_risk.py",
+    "scripts/smoke_decide.py",
+    "scripts/smoke_llm_decide.py",
+    "scripts/smoke_paper.py",
+    "scripts/smoke_account.py",
+    "scripts/smoke_exits.py",
+    "scripts/smoke_pair_blocker.py",
+    "scripts/smoke_symbols.py",
+    "scripts/smoke_upnl.py",
+    "scripts/smoke_tick_stops.py",
+    "scripts/smoke_paper_fallback.py",
+    "scripts/smoke_reconcile.py",
+    "scripts/smoke_chart.py"
+)
 
-Write-Host "`n[2/2] Running Paper Shadow Book Smoke Test..." -ForegroundColor Yellow
-python scripts/smoke_paper.py
-
-Write-Host "`n✅ Test suite execution complete." -ForegroundColor Green
+Write-Host "Smokes via $py"
+foreach ($s in $smokes) {
+    Write-Host "  $s"
+    & $py $s
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "FAIL $s (exit $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
+}
+Write-Host "All smokes passed."

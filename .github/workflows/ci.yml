@@ -1,50 +1,49 @@
-name: CI / Test Suite
+name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main, master]
   pull_request:
-    branches: [ "main" ]
+    branches: [main, master]
 
 jobs:
-  test:
-    name: Test on Python ${{ matrix.python-version }}
+  smoke:
+    name: Smoke Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
-
-      - name: Install dependencies
-        run: |
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Run Smoke Tests
+      - name: Offline smokes
         run: |
+          python scripts/smoke_signal.py
           python scripts/smoke_risk.py
+          python scripts/smoke_decide.py
+          python scripts/smoke_llm_decide.py
           python scripts/smoke_paper.py
+          python scripts/smoke_account.py
+          python scripts/smoke_exits.py
+          python scripts/smoke_pair_blocker.py
+          python scripts/smoke_symbols.py
+          python scripts/smoke_upnl.py
+          python scripts/smoke_tick_stops.py
+          python scripts/smoke_paper_fallback.py
+          python scripts/smoke_reconcile.py
+          python scripts/smoke_chart.py
 
-  docker-validate:
-    name: Validate Docker Compose
+  compose:
+    name: docker compose config
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy env template
-        run: cp .env.example .env
-
-      - name: Validate Docker Compose Configuration
-        run: docker compose config
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config

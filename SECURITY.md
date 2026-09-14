@@ -1,31 +1,13 @@
-# Security Policy
+# Security
 
-The Bitget Divergent Agent Desk team takes financial security and credential isolation with extreme seriousness.
+This bot talks to **Bitget UTA Demo** by default. Live trading is off unless `BITGET_ALLOW_LIVE=1`.
 
----
+## Keys
 
-## 🔒 Supported Versions
+- Use Demo Trading keys (`paptrading`). No withdrawal permission.
+- Put keys only in local `.env`. Gitignores `.env` and `data/`. `.env.example` is the committed template.
+- Bind the dashboard to `127.0.0.1` outside Docker (`scripts/run_api.py` default). Compose sets `HOST=0.0.0.0` for the container.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
+## Reporting
 
----
-
-## 🛡️ Security Best Practices for Trading Bot Deployments
-
-1. **API Key Isolation**:
-   - **Never enable withdrawal permissions** on Bitget API keys.
-   - Use **Demo Trading API keys** (`paptrading`) during testing and evaluation.
-   - Bind API keys to specific static server IP addresses whenever possible.
-2. **Environment Protection**:
-   - Never commit `.env` containing API secrets to source control.
-   - The `.gitignore` file enforces exclusion of all `.env*` files except `.env.example`.
-3. **Network Security**:
-   - Bind the FastAPI dashboard (`HOST=127.0.0.1`) unless shielded behind an authenticated HTTPS reverse proxy.
-
----
-
-## 🚨 Reporting a Vulnerability
-
-Please report vulnerabilities privately via GitHub Private Vulnerability Reporting or by emailing `security@bitget-desk.dev`.
+Use [GitHub private vulnerability reporting](https://github.com/scanner72/bitget-bot/security) on this repository. Do not open a public issue with keys or `.env` contents.

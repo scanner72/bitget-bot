@@ -1,87 +1,65 @@
-# 📡 FastAPI Dashboard & Telemetry API Reference
+# API
 
-The **FastAPI Gateway** provides real-time telemetry, position monitoring, and execution metrics for the Bitget S2 Divergent Agent Desk.
+Base: `http://127.0.0.1:8080`. HTML on `/` and `/chart`; everything else JSON. Handlers in `api/app.py`.
 
----
+## `GET /health`
 
-## 1. General Information
-
-- **Default Port**: `8080`
-- **Base URL**: `http://127.0.0.1:8080`
-- **Response Format**: `application/json` (except `/` HTML dashboard)
-
----
-
-## 2. Core REST Endpoints
-
-### 2.1 Health Check
-- **Endpoint**: `GET /health`
-- **Response**:
 ```json
 {
-  "status": "ok",
+  "ok": true,
+  "paper": true,
   "exec_mode": "hub_demo",
-  "agent_mode": "rules",
-  "timestamp": "2026-09-14T11:30:00Z"
+  "hub_demo": true,
+  "bitget_demo": true,
+  "hub_sync_exchange_sl": true,
+  "paper_fallback": true
 }
 ```
 
-### 2.2 Account & Equity
-- **Endpoint**: `GET /account`
-- **Description**: Returns wallet balance, unrealized PnL, and margin health from Bitget UTA.
-- **Endpoint**: `GET /equity`
-- **Response**:
+`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK` is on **and** `exec_mode` is `hub_demo`.
+
+## `GET /account` and `GET /equity`
+
+Same payload: paper account snapshot, then Demo overlay when hub is up (`exec/hub_balance.py`). Typical keys: `start_balance`, `cash`, `realized_pnl`, `open_positions_notional`, `total_unrealized_pnl`, `equity`, `equity_mtm`, `currency`. Overlay may add Demo equity fields; on hub failure `hub_overlay_error` is set and paper values stay.
+
+## `GET /positions`
+
+Object, not a bare array (`exec/hub_view.py`):
+
 ```json
 {
-  "total_equity": 10420.50,
-  "available_margin": 9850.20,
-  "unrealized_pnl": 70.30,
-  "daily_realized_pnl": 12.40
+  "positions": [],
+  "count": 0,
+  "total_unrealized_pnl": 0,
+  "stale_count": 0,
+  "source": "hub_demo",
+  "untracked_count": 0,
+  "mtm_errors": []
 }
 ```
 
-### 2.3 Active Positions
-- **Endpoint**: `GET /positions`
-- **Response**:
-```json
-[
-  {
-    "symbol": "BTC/USDT:USDT",
-    "side": "long",
-    "entry_price": 61250.0,
-    "mark_price": 61480.0,
-    "size": 0.05,
-    "notional": 3074.0,
-    "unrealized_pnl": 11.50,
-    "sl": 60750.0,
-    "tp1": 61850.0,
-    "tp2": 62500.0,
-    "soft_exit_stage": "BE_ACTIVE"
-  }
-]
-```
+`source` is `hub_demo`, `live`, or `paper`. Rows keep ccxt `symbol` plus `symbol_id` / `symbol_display`. Demo rows carry exchange entry/mark/PnL; paper-live rows are tagged as the fallback venue.
 
-### 2.4 Signal Candidates & Agent Decisions
-- **Endpoint**: `GET /candidates`
-- **Description**: Lists current market symbols showing active RSI divergences.
-- **Endpoint**: `GET /decisions`
-- **Description**: Stream of recent agent evaluations:
-```json
-[
-  {
-    "timestamp": "2026-09-14T11:28:15Z",
-    "symbol": "ETH/USDT:USDT",
-    "action": "ENTER",
-    "reason": "Confirmed Bullish Divergence on 15m; Risk Gate Passed; Notional $50",
-    "confidence": 0.88
-  }
-]
-```
+## `GET /decisions?limit=50`
 
-### 2.5 Trade Execution Fills & History
-- **Endpoint**: `GET /fills`: Chronological log of recent market and bracket order fills.
-- **Endpoint**: `GET /history`: Closed positions with win/loss metrics and R-multiples.
+`{ "decisions": [ ... ], "count": N }` — tail of `data/decisions.jsonl`.
 
-### 2.6 Chart Data
-- **Endpoint**: `GET /api/chart/data?symbol=BTC/USDT:USDT&timeframe=15m`
-- **Description**: Returns OHLCV candles, 14-period RSI array, and detected divergence points for frontend charting.
+## `GET /candidates?limit=50`
+
+`{ "candidates": [ ... ], "count": N }` — tail of `data/candidates.jsonl`.
+
+## `GET /fills?limit=50`
+
+`{ "fills": [ ... ], "count": N, "source": "hub_demo" }` (or paper).
+
+## `GET /history?limit=40`
+
+`{ "trades": [ ... ], "count": N }` closed trades for the dashboard history/chart.
+
+## `GET /api/chart/data?symbol=BTC/USDT:USDT&timeframe=15m&limit=400`
+
+Chart payload from public OHLCV (`api/chart_data.py`): candles, RSI, markers. On failure: `{ "status": "error", "candles": [], "error": "..." }`.
+
+## `GET /` · `GET /chart` · `GET /ui/live`
+
+HTML dashboard, overlay chart page, live fragment. There is **no** `POST /scan/once` (scan can exceed HTTP timeouts). Run `python scripts/run_signal_loop.py --once` or `--poll`.

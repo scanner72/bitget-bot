@@ -1,5 +1,5 @@
-# Bitget S2 Divergent Agent Desk — paper-only local stack
-# Public Bitget OHLCV only; no exchange secrets required for smoke/demo.
+# Bitget S2 Divergent Agent Desk — api + desk loop
+# Mode comes from .env (hub_demo + paper shadow). Public OHLCV; Demo keys required for orders.
 services:
   api:
     build: .

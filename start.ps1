@@ -1,66 +1,65 @@
-# ==============================================================================
-# Bitget S2 Divergent Agent Desk - 1-Click Platform Launcher (Windows PowerShell)
-# ==============================================================================
+# Bitget S2 Divergent Agent Desk — Windows launcher
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -Path $ScriptDir
 
-Write-Host "`n🚀 Starting Bitget S2 Divergent Agent Desk..." -ForegroundColor Cyan
+Write-Host "Starting Divergent Agent Desk..."
 
-# 1. Verify Docker Daemon
-Write-Host "[1/4] Checking Docker status..." -ForegroundColor Yellow
-$useDocker = $true
-try {
-    docker info > $null 2>&1
-    Write-Host "  ✅ Docker daemon is running." -ForegroundColor Green
-} catch {
-    Write-Host "  ⚠️ Docker daemon is not running. Checking local Python environment..." -ForegroundColor Yellow
-    $useDocker = $false
+function Get-Python {
+    $venv = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+    if (Test-Path $venv) { return $venv }
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw "Python not found. Install 3.11+ or start Docker Desktop."
 }
 
-# 2. Verify / Setup Environment File
-Write-Host "[2/4] Verifying environment configuration..." -ForegroundColor Yellow
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+cmd /c "docker info >nul 2>&1" | Out-Null
+$useDocker = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEap
+
+if ($useDocker) {
+    Write-Host "Docker is up."
+} else {
+    Write-Host "Docker not running — using local Python."
+}
+
 if (-not (Test-Path ".env")) {
     if (Test-Path ".env.example") {
         Copy-Item ".env.example" ".env"
-        Write-Host "  ⚠️ Created default .env from .env.example. Add your Bitget Demo keys." -ForegroundColor Yellow
+        Write-Host "Created .env from .env.example — add Bitget Demo keys (and Groq if AGENT_MODE=llm)."
     } else {
-        Write-Host "  ❌ Error: Neither .env nor .env.example found." -ForegroundColor Red
+        Write-Host "Missing .env and .env.example"
         exit 1
     }
-} else {
-    Write-Host "  ✅ .env configuration found." -ForegroundColor Green
 }
 
-# 3. Launch Services
 if ($useDocker) {
-    Write-Host "[3/4] Launching Docker Compose stack..." -ForegroundColor Yellow
-    docker compose up -d
+    docker compose up -d --build
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
-    Write-Host "[3/4] Launching services via local Python..." -ForegroundColor Yellow
-    Start-Process -FilePath "python" -ArgumentList "scripts/run_api.py" -WindowStyle Minimized
-    Start-Process -FilePath "python" -ArgumentList "scripts/run_signal_loop.py --poll" -WindowStyle Minimized
+    $py = Get-Python
+    Write-Host "API + desk via $py"
+    Start-Process -FilePath $py -ArgumentList @("scripts/run_api.py") -WorkingDirectory $ScriptDir -WindowStyle Minimized
+    Start-Process -FilePath $py -ArgumentList @("scripts/run_signal_loop.py", "--poll") -WorkingDirectory $ScriptDir -WindowStyle Minimized
 }
 
-# 4. Verification & Status Box
-Write-Host "`n[4/4] Verifying services..." -ForegroundColor Yellow
-Start-Sleep -Seconds 4
+$health = $null
+for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    try {
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:8080/health" -TimeoutSec 2
+        if ($health.ok -eq $true) { break }
+    } catch {
+        $health = $null
+    }
+}
 
-Write-Host @"
-
-==============================================================================
-✨ Bitget S2 Divergent Agent Desk is LIVE!
-==============================================================================
-
-  💻 Web Dashboard:     http://127.0.0.1:8080
-  📡 REST API Health:   http://127.0.0.1:8080/health
-  📈 Signal Candidates: http://127.0.0.1:8080/candidates
-  💼 Active Positions:  http://127.0.0.1:8080/positions
-
-To view real-time Docker logs:
-  docker compose logs -f
-
-To stop all containers:
-  docker compose down
-==============================================================================
-"@ -ForegroundColor Cyan
+if ($health -and $health.ok -eq $true) {
+    Write-Host "Health ok  exec_mode=$($health.exec_mode)  http://127.0.0.1:8080"
+} else {
+    Write-Host "Dashboard not healthy yet. Check: docker compose logs -f"
+    Write-Host "Expected GET /health -> { ok: true, exec_mode: hub_demo }"
+    exit 1
+}

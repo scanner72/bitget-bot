@@ -1,233 +1,146 @@
-<div align="center">
-
-# 🛸 Bitget S2 — Divergent Agent Desk
-### Autonomous Quantitative Trading Agent, Structural Divergence Engine & Bitget UTA Shadow Execution Fabric
+# Bitget S2 — Divergent Agent Desk
 
 [![CI](https://github.com/scanner72/bitget-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/scanner72/bitget-bot/actions)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![CCXT 4](https://img.shields.io/badge/CCXT-4.0+-F39C12.svg)](https://github.com/ccxt/ccxt)
-[![Bitget UTA](https://img.shields.io/badge/Bitget-UTA%20v3%20Demo-00F0FF.svg?logo=bitcoin&logoColor=black)](https://www.bitget.com)
-[![Docker Ready](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**[English](README.md)** • **[Русский](README.ru.md)** • **[Architecture](docs/architecture.md)** • **[Risk Engine](docs/risk-engine.md)** • **[Strategy Guide](docs/strategy-divergence.md)** • **[API Reference](docs/api-reference.md)** • **[Deployment](docs/deployment-guide.md)** • **[AI Fleet](docs/agents-setup.md)**
+**[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md)
 
-<p align="center">
-  <b>Bitget S2 Divergent Agent Desk</b> bridges algorithmic market microstructure with autonomous cognitive trading.<br/>
-  Streaming 100% public Bitget OHLCV candles, detecting RSI-momentum divergences, evaluating strict mathematical risk constraints, and executing on <b>Bitget Universal Trading Account (UTA)</b> Demo with a synchronized local paper shadow book.
-</p>
+Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI / level-cross signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
 
----
-
-</div>
-
-## 🌟 Why Divergent Agent Desk?
-
-Most retail trading bots fall into two dangerous extremes:
-- **Rigid Grid Bots**: Blindly dollar-cost average into falling markets until account liquidation during strong trend expansions.
-- **Overfitted "Black-Box" Algos**: Rely on lagging indicators without understanding momentum divergence, volatility regime shifts, or multi-stage scaling.
-- **Uncontrolled Drawdown**: Fixed position sizing risks catastrophic losses when market conditions change.
-
-**Bitget S2 Divergent Agent Desk fundamentally redesigns the quant workflow:**
-1. **Zero-Secret Market Ingestion**: Ingests live candles via public WebSockets and REST bootstraps without exposing API keys.
-2. **Structural RSI Divergence**: Identifies true institutional accumulation and distribution phases.
-3. **Risk-to-SL Sizing**: Every single trade notional is mathematically calculated from the Stop-Loss distance so capital loss is strictly bounded to the dollar risk target.
-4. **Bitget UTA Demo Execution with Shadow Book**: Places hard demo market entries and exchange-side SL/TP2 brackets on Bitget, while locally managing soft TP1 (50% scale-out) and shifting stop-losses to **Break-Even**.
+**Not live mainnet.** `BITGET_ALLOW_LIVE=0`. Deadline **21 Sep 2026 24:00 UTC+8**. Form: [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) — submit only after GitHub + paper log + video + X post exist.
 
 ---
 
-## ⚡ Feature Matrix & Competitive Comparison
+## What actually runs
 
-| Capability | Divergent Agent Desk | 3Commas / Bitsgap | Freqtrade | Hummingbot | Bitget CopyTrading |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **Public Data Ingestion (Zero Keys Required)** | **✅ WebSocket + REST** | ❌ Requires keys | ⚠️ Exchange specific | ⚠️ Exchange specific | ❌ Closed |
-| **Mathematical Risk-to-SL Sizing** | **✅ Exact Dollar Loss Sizing**| ❌ Fixed / % only | ⚠️ Custom code | ❌ Manual spread | ❌ Fixed ratio |
-| **Bitget UTA v3 Demo Support** | **✅ Native `hub_demo`** | ⚠️ Generic API | ⚠️ Basic CCXT | ⚠️ Partial | ❌ Live only |
-| **Soft Multi-Stage Exits (TP1 / BE / Trail)** | **✅ Paper Shadow Book** | ⚠️ Partial / Paid | ⚠️ Custom code | ❌ No | ❌ Trader dependent |
-| **Autonomous Circuit Breaker & Daily Kill** | **✅ Built-in Risk Gate** | ⚠️ Basic | ⚠️ Custom hooks | ❌ No | ❌ No |
-| **Reactive Web Dashboard (:8080)** | **✅ FastAPI + Realtime PnL** | ⚠️ Cloud only | ⚠️ Webserver plugin | ❌ CLI only | ⚠️ Bitget App |
-| **Cognitive Agent Layer (Rules / LLM)** | **✅ Built-in Reasoner** | ❌ No | ❌ No | ❌ No | ❌ Human only |
-| **100% Self-Hosted & Private** | **✅ MIT License** | ❌ Closed SaaS | ✅ Self-hosted | ✅ Self-hosted | ❌ Centralized |
+| Piece | This desk |
+|-------|-----------|
+| Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close, exchange SL+TP2 |
+| Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
+| Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
+| Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
+| TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
+| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
+| Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
+| BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
 
----
-
-## 🏛️ System Architecture
+Public candles need no keys. **Demo orders need Bitget Demo API keys in local `.env` (never commit).**
 
 ```mermaid
-flowchart TD
-    subgraph MarketIngest [" 🌐 Market Data Ingestion "]
-        BitgetWS[" Bitget Public WebSocket (Real-Time Candles) "]
-        BitgetREST[" Bitget REST API (Historical Bootstrap) "]
-        CandleCache[" Ingest Candle Cache (Circular Buffer) "]
-    end
-
-    subgraph SignalProcessing [" 📈 Quantitative Signal Engine "]
-        RSICalc[" Wilder RSI Engine (14-Period) "]
-        SwingDetect[" Swing High / Swing Low Extrema Detector "]
-        DivEngine[" Momentum Divergence Classifier (Bullish / Bearish) "]
-        CandidateQueue[" Candidates Event Stream (JSONL) "]
-    end
-
-    subgraph AgentReasoning [" 🧠 Cognitive Decision Engine "]
-        RulesAgent[" Deterministic Rules Agent (Trend / Range Filter) "]
-        LLMAgent[" Cognitive LLM Reasoner (OpenAI-Compatible) "]
-        DecisionGate[" Decision: ENTER / SKIP / REDUCE "]
-    end
-
-    subgraph RiskManagement [" 🛡️ Capital Preservation & Risk Gate "]
-        RiskGate[" Risk Gate (Hard Daily Loss / Cooldown / Max Pos) "]
-        SizingEngine[" Dynamic Sizing (Risk-to-SL Mathematical Sizing) "]
-        KillSwitch[" Daily Loss Killswitch & Circuit Breaker "]
-    end
-
-    subgraph ExecutionSubsystem [" ⚡ Routing & Execution Engine "]
-        Router[" Multi-Mode Router (hub_demo / paper / live) "]
-        BitgetHub[" Bitget UTA Connector (Demo Market Orders + Exchange SL/TP) "]
-        PaperShadow[" Shadow Book (Soft TP1, Break-Even, Trailing Stop) "]
-    end
-
-    subgraph TelemetryUI [" 💻 Monitoring & Web Dashboard "]
-        FastAPI[" FastAPI Core Gateway (:8080) "]
-        Dashboard[" Live Web Dashboard (Real-time PnL, Mark, Equity Curve) "]
-    end
-
-    BitgetWS --> CandleCache
-    BitgetREST --> CandleCache
-    CandleCache --> RSICalc
-    RSICalc --> SwingDetect
-    SwingDetect --> DivEngine
-    DivEngine --> CandidateQueue
-    CandidateQueue --> RulesAgent
-    CandidateQueue -.-> LLMAgent
-    RulesAgent --> DecisionGate
-    DecisionGate --> RiskGate
-    RiskGate --> SizingEngine
-    SizingEngine --> Router
-    Router --> BitgetHub
-    Router --> PaperShadow
-    PaperShadow <--> BitgetHub
-    BitgetHub --> FastAPI
-    PaperShadow --> FastAPI
-    FastAPI --> Dashboard
+flowchart LR
+  BG[Bitget public OHLCV<br/>WS candles + REST bootstrap] --> IN[ingest/candle_cache]
+  IN --> SIG[signals/<br/>RSI div + level-cross]
+  SIG --> DESK[desk loop<br/>candidates.jsonl]
+  DESK --> AG[agent.decide<br/>rules or llm]
+  AG --> RK[risk.gate + sizing]
+  RK --> EX[exec.router]
+  EX --> HUB[bitget_hub Demo UTA]
+  EX --> PAP[paper shadow]
+  HUB --> API[FastAPI :8080]
+  PAP --> API
 ```
 
 ---
 
-## 🛡️ Mathematical Risk Control Matrix
+## Risk (from `.env.example`)
 
-| Metric | Env Variable | Default | Purpose |
-|:---|:---|:---:|:---|
-| **Risk Per Trade** | `RISK_USD_PER_TRADE` | `$2.00` | Target dollar loss if position hits Stop-Loss. |
-| **Max Notional** | `MAX_NOTIONAL_USD` | `$100.00` | Maximum allowable notional exposure per position. |
-| **Min Notional** | `MIN_NOTIONAL_USD` | `$10.00` | Minimum viable notional to meet exchange constraints. |
-| **Daily Loss Limit** | `MAX_DAILY_LOSS_USD` | `$50.00` | Hard circuit breaker halting all new entries until next session. |
-| **Max Open Positions** | `MAX_POSITIONS` | `8` | Maximum concurrent active positions across all pairs. |
-| **Per-Symbol Cooldown**| `COOLDOWN_SEC` | `900` | 15-minute cool-off period before re-entering same asset. |
+| Control | Env | This desk |
+|---------|-----|-----------|
+| Risk per trade (to SL) | `RISK_USD_PER_TRADE` | `10` |
+| Max / min notional | `MAX_NOTIONAL_USD` / `MIN_NOTIONAL_USD` | `500` / `10` |
+| Daily loss kill | `MAX_DAILY_LOSS_USD` | `50` (code default if unset) |
+| Max positions | `MAX_POSITIONS` | `15` |
+| Cooldown | `COOLDOWN_SEC` | `900` |
+| Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
+| Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` (3 consecutive losses / WR 30 / 48h) |
+| TF blocker | `TF_BLOCKER_ENABLED` | `0` |
 
-👉 **[Read the complete Risk Engine Specification](docs/risk-engine.md)**
+Sizing: `notional = clamp(RISK / (|entry-sl|/entry), MIN, MAX)`. If those env vars are missing, code falls back to risk `2` / max `100` — this repo’s example file is the intended desk.
 
----
-
-## 🌐 Universal Cross-Platform Architecture
-
-Bitget S2 Divergent Agent Desk runs natively across **Linux**, **macOS**, and **Windows**:
-
-| Component / Capability | 🐧 Linux (Ubuntu, Debian, Arch) | 🍏 macOS (Apple Silicon & Intel) | 🪟 Windows (10, 11, WSL2) |
-|:---|:---|:---|:---|
-| **Containerization** | Docker Engine 24+ & Docker Compose | Docker Desktop (Native `arm64` / `amd64`) | Docker Desktop (WSL2 Backend) |
-| **Python Runtime** | Native Python 3.11 / 3.12 | Native Python 3.11 / 3.12 | Native Python 3.11 / 3.12 |
-| **1-Click Platform Launcher** | `./start.sh` | `./start.sh` | `.\start.ps1` or `start.bat` |
-| **Automated Test Runner** | `./test.sh` | `./test.sh` | `.\test.ps1` |
-| **Remote Server Deployer** | `./deploy-remote.sh` | `./deploy-remote.sh` | `.\deploy-remote.ps1` |
+ATR levels on open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry×0.02)`; long SL=`entry-1×ATR`, TP1=`+1.5×ATR`, TP2=`+2.5×ATR` (short mirrored). Skip if `atr_pct` &lt; 0.3% or &gt; 6%.
 
 ---
 
-## 🚀 Quick Start in 60 Seconds
+## Quick start
 
-### 1. Launch with 1-Click Script
-```powershell
-# Windows (PowerShell):
-.\start.ps1
+### Docker (judges / overnight desk)
 
-# Linux / macOS:
-./start.sh
-```
-
-### 2. Or Launch with Docker Compose
 ```bash
-cp .env.example .env
+cp .env.example .env          # Windows: copy .env.example .env
+# Fill BITGET_* Demo keys. Optional: AGENT_MODE=llm + Groq key
 docker compose up -d --build
 ```
 
-### 3. Open Web Dashboard & Endpoints
-
-| Service | URL | Purpose |
-|:---|:---|:---|
-| **Web Dashboard** | [http://localhost:8080](http://localhost:8080) | Live PnL, mark prices, positions, and equity overlay |
-| **REST Health** | [http://localhost:8080/health](http://localhost:8080/health) | System health and execution mode status |
-| **Candidates** | [http://localhost:8080/candidates](http://localhost:8080/candidates) | Active RSI divergence signal stream |
-| **Positions** | [http://localhost:8080/positions](http://localhost:8080/positions) | Open positions and soft-exit stages |
-
-> 💡 **No exchange API keys required for testing:** By default, market data is 100% public, and paper mode requires zero credentials!
-
----
-
-## 🤖 AI Agent Fleet & Context Sync Integration
-
-- **Cursor & Windsurf**: Configured via [`.cursorrules`](.cursorrules).
-- **Claude Code CLI & Claude Desktop**: Configured via [`CLAUDE.md`](CLAUDE.md).
-- **Google Antigravity**: Configured via [`AGENTS.md`](AGENTS.md).
-- **Remote Context Sync**: Connect to [Remote Context (`context-sync`)](https://github.com/scanner72/context-sync) to automatically persist all trade decisions, soft-exit calibrations, and risk updates across your workstation fleet.
-
-👉 **[Read the AI Agent Setup Guide](docs/agents-setup.md)**
-
----
-
-## 💻 Remote Server Deployment
-
-Deploy the entire platform to your remote Linux VPS (AWS, Hetzner, DigitalOcean) with one command:
-
-```powershell
-# Windows:
-.\deploy-remote.ps1 -RemoteHost "10.10.10.11" -RemoteUser "operator" -RemotePath "/opt/bitget-bot"
-```
+Dashboard: [http://127.0.0.1:8080](http://127.0.0.1:8080) · health: `/health` must show `"ok": true`, `"exec_mode": "hub_demo"`.
 
 ```bash
-# Linux / macOS:
-./deploy-remote.sh 10.10.10.11 operator /opt/bitget-bot
+docker compose logs -f desk
+docker compose down
 ```
 
-👉 **[Read the Production Deployment Guide](docs/deployment-guide.md)**
+Windows: `.\start.ps1` · Linux/macOS: `./start.sh` (same compose path; falls back to `.venv` if Docker is down).
 
----
+### Local venv
 
-## 🧪 Testing & Verification
-
-Run the automated test and smoke suite:
-```powershell
-# Windows:
-.\test.ps1
-
-# Linux / macOS:
-./test.sh
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt   # Windows: .venv\Scripts\python.exe
+copy .env.example .env
+.venv/bin/python scripts/run_api.py
+.venv/bin/python scripts/run_signal_loop.py --poll
 ```
 
----
-
-## 🤝 Contributing & Community
-
-Contributions are warmly welcome! Whether you are refining signal indicators or adding machine learning filters:
-- **[CONTRIBUTING.md](CONTRIBUTING.md)**: PR workflows and coding standards.
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)**: Community standards.
-- **[SECURITY.md](SECURITY.md)**: Financial security policy and vulnerability reporting.
+Offline smokes: `.\test.ps1` or `./test.sh`. Hub/Demo smokes need keys: `scripts/smoke_bitget.py`, `scripts/smoke_hub_demo.py`.
 
 ---
 
-## 📄 License
+## API
 
-Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
+| Method | Path | Body |
+|--------|------|------|
+| GET | `/health` | `{ ok, paper, exec_mode, hub_demo, bitget_demo, hub_sync_exchange_sl, paper_fallback }` |
+| GET | `/positions` | `{ positions, count, source, total_unrealized_pnl, … }` |
+| GET | `/account` · `/equity` | Paper snapshot + Demo equity overlay when `hub_demo` |
+| GET | `/decisions?limit=50` | `{ decisions, count }` from `data/decisions.jsonl` |
+| GET | `/candidates?limit=50` | `{ candidates, count }` |
+| GET | `/fills?limit=50` | `{ fills, count, source }` |
+| GET | `/history?limit=40` | `{ trades, count }` |
+| GET | `/` | HTML dashboard (click row → chart) |
+| GET | `/ui/live` | HTML fragment for live refresh |
+| GET | `/chart` | Overlay chart page |
+| GET | `/api/chart/data` | `{ candles, rsi, markers, … }` public OHLCV |
 
-<div align="center">
-  <sub>Built with ❤️ for quantitative traders and autonomous agent developers.</sub>
-</div>
+Details: [docs/api-reference.md](docs/api-reference.md).
+
+---
+
+## Layout
+
+| Path | Role |
+|------|------|
+| `ingest/` | Public WS candles + REST bootstrap, universe scan |
+| `signals/` | RSI-momentum divergence + level-cross (`engine.py`, `divergence/`) |
+| `desk/` | Scan → candidate JSONL → decide → risk → router |
+| `agent/decide.py` | `ENTER` / `SKIP` / `REDUCE`; `rules` or `llm` |
+| `risk/` | Gate, risk-to-SL sizing, ATR exits, pair blocker |
+| `exec/` | Router, Bitget UTA hub, paper book, Demo overlay |
+| `api/app.py` | Dashboard `:8080` |
+| `scripts/smoke_*.py` | Smokes |
+| `docs/DEMO.md` | 2–3 min recording script |
+| `docs/SUBMISSION.md` | GitHub / video / X / form checklist |
+
+Compose services: `api` (`bitget-desk-api`) and `desk` (`bitget-desk-loop`), volume `./data`.
+
+---
+
+## Hackathon pack
+
+- Video: [docs/DEMO.md](docs/DEMO.md)
+- Submit checklist: [docs/SUBMISSION.md](docs/SUBMISSION.md)
+- Agent notes: [docs/CURSOR_HANDOFF.md](docs/CURSOR_HANDOFF.md)
+- Handbook: [bitget-ai.gitbook.io/bitgetai_hackathons2](https://bitget-ai.gitbook.io/bitgetai_hackathons2)
+
+**EN:** Educational Demo UTA bot. Not financial advice.  
+**RU:** Учебный стол на Bitget Demo. Не инвестиционная рекомендация.
