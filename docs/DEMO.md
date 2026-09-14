@@ -52,7 +52,7 @@ cd C:\bitget-bot
 ```
 
 Показать логи: `[HUB] OPEN`, `[HUB] TPSL`, `[SIZE] risk_usd=...`, строки в `data/decisions.jsonl`.  
-Публичный лог для судей (не live mainnet, не V1): [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv) — `python scripts/export_paper_log.py --from-desk`.  
+Публичный лог для судей (UTA Demo, не live mainnet): [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv) — `python scripts/export_paper_log.py --from-desk`.  
 **Не останавливайте** фоновый `--poll`, если он уже крутится.
 
 ### C. Dashboard API (~40–60 с)

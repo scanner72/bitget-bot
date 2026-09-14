@@ -215,6 +215,40 @@ def main() -> int:
         _assert(len(wrap_rows) == 1, wrap_rows)
         _assert(wrap_rows[0]["trading_pair"] == "BTC/USDT:USDT", wrap_rows[0])
 
+        mixed = [
+            {
+                "ts": "2026-09-09T13:20:07+00:00",
+                "fill_id": "h_open",
+                "position_id": "pos_hub",
+                "event": "open",
+                "symbol": "ETH/USDT:USDT",
+                "side": "long",
+                "size_usd": 100.0,
+                "qty": 0.04,
+                "price": 2500.0,
+                "realized_pnl": 0.0,
+                "source": "hub_demo",
+                "meta": {"exec_venue": "hub", "hub_order_id": "oid1"},
+            },
+            {
+                "ts": "2026-09-09T13:21:00+00:00",
+                "fill_id": "p_open",
+                "position_id": "pos_live",
+                "event": "open",
+                "symbol": "MET/USDT:USDT",
+                "side": "short",
+                "size_usd": 100.0,
+                "qty": 400.0,
+                "price": 0.25,
+                "realized_pnl": 0.0,
+                "source": "paper_live",
+                "meta": {"exec_venue": "paper"},
+            },
+        ]
+        kept = mod.keep_uta_demo_fills(mixed)
+        _assert(len(kept) == 1, kept)
+        _assert(kept[0]["position_id"] == "pos_hub", kept[0])
+
         # CLI --from-sample (judges, no data/).
         sample_csv = tmp_path / "from_sample.csv"
         sample_jsonl = tmp_path / "from_sample.jsonl"
@@ -282,7 +316,7 @@ def main() -> int:
             for line in DESK_FILLS.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
-        _assert(len(desk_native) >= 50, f"desk fixture too small: {len(desk_native)}")
+        _assert(len(desk_native) >= 40, f"desk fixture too small: {len(desk_native)}")
         for rec in desk_native:
             pid = str(rec.get("position_id") or "")
             fid = str(rec.get("fill_id") or "")
@@ -323,8 +357,13 @@ def main() -> int:
         _assert(all(r["label"] == "DEMO" for r in desk_rows), desk_rows[0])
         _assert(float(desk_rows[0]["equity_after"]) == 10000.0, desk_rows[0])
         modes = {r["mode"] for r in desk_rows}
-        _assert(modes <= {"hub_demo", "paper_shadow", "paper_live"}, modes)
+        _assert(modes <= {"hub_demo", "paper_shadow"}, modes)
         _assert("hub_demo" in modes, modes)
+        _assert("paper_live" not in modes, modes)
+        hub_pids = {r["position_id"] for r in desk_rows if r["mode"] == "hub_demo"}
+        for r in desk_rows:
+            if r["mode"] == "paper_shadow":
+                _assert(r["position_id"] in hub_pids, r)
 
         committed = _read_csv(COMMITTED_CSV)
         _assert(len(committed) == len(desk_rows), (len(committed), len(desk_rows)))
@@ -335,6 +374,10 @@ def main() -> int:
         committed_ids = [r["fill_id"] for r in committed]
         desk_ids = [r["fill_id"] for r in desk_rows]
         _assert(committed_ids == desk_ids, (committed_ids[:3], desk_ids[:3]))
+        _assert(
+            not any(r["mode"] == "paper_live" for r in committed),
+            "committed log still has paper_live (not UTA Demo)",
+        )
         _assert(
             not any(
                 r["trading_pair"].startswith("BTC/") and abs(float(r["price"]) - 65000.0) < 1e-6
