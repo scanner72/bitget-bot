@@ -28,6 +28,7 @@ smokes=(
   scripts/smoke_reconcile.py
   scripts/smoke_chart.py
   scripts/smoke_export_paper_log.py
+  scripts/smoke_replay_tp1_fix.py
 )
 
 echo "Smokes via $PY"

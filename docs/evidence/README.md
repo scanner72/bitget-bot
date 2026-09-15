@@ -23,6 +23,7 @@ This folder is that log. **It is not live mainnet.**
 | [`paper_trading_log.sample.csv`](paper_trading_log.sample.csv) | Sanitized **SIMULATED_DEMO** snapshot, always labeled |
 | [`fixtures/paper_fills.desk.jsonl`](fixtures/paper_fills.desk.jsonl) | Native fills from this desk (source for the canonical log) |
 | [`fixtures/paper_fills.sample.jsonl`](fixtures/paper_fills.sample.jsonl) | Tiny offline fixture for `--from-sample` |
+| [`counterfactual_tp1_fix.md`](counterfactual_tp1_fix.md) | What-if PnL of those closed trades under TP1 50% + ATR floor 0.5% |
 
 Dashboard dumps (not the checklist log): [`docs/demo_artifacts/`](../demo_artifacts/).
 
