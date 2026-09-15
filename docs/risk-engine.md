@@ -33,12 +33,12 @@ Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`.
 
 ## ATR exits (paper shadow + exchange parachute)
 
-On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * 0.02)`.
+On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * ATR_FLOOR_PCT)` (default **0.5%**, env `ATR_FLOOR_PCT`). A 2% floor pushed 15m TP1/TP2 so far that quiet names never tagged TP, then `BE_HOURS` closed at entry (`trailing_hit` / 0 PnL).
 
 - Long: SL = entry − 1×ATR, TP1 = +1.5×ATR, TP2 = +2.5×ATR (short mirrored).
 - Skip open if `atr_pct` &lt; 0.3% or &gt; 6%.
 - Exchange gets **SL + TP2** on open (`HUB_SYNC_EXCHANGE_SL=1` also pushes SL after BE/trail).
-- **TP1** does not flatten 50%. It marks `tp1_hit`, moves SL to breakeven, starts trail; position stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`).
+- **TP1** does not flatten 50%. It marks `tp1_hit`, moves SL to breakeven, starts trail; position stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`). The same bar that first tags TP1 does **not** immediately flatten at the new BE (that printed 0 PnL while the chart wick was at TP). `BE_HOURS` SL fills are `be_timeout`, not `trailing_hit`. TP2 fills at the TP2 price, not a retraced mark.
 - Tick path: `TICK_STOPS=1` evaluates open positions on each WS quote; 30s loop is backup.
 
 ## BTC / pair policy

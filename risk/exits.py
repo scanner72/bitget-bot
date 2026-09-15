@@ -163,6 +163,53 @@ def _clamp_sl_to_breakeven(
     return min(float(sl), float(entry))
 
 
+def _at_breakeven(sl: float, entry: float) -> bool:
+    entry = float(entry)
+    if entry <= 0:
+        return False
+    return abs(float(sl) - entry) <= max(abs(entry) * 1e-9, 1e-12)
+
+
+def _sl_exit_status(
+    pos: dict[str, Any],
+    sl: float,
+    entry: float,
+    *,
+    is_long: bool,
+    updates: dict[str, Any] | None = None,
+) -> str:
+    """Name the SL fill. BE timer must not look like a profit trail."""
+    is_profitable = (sl >= entry) if is_long else (sl <= entry)
+    if not is_profitable:
+        return "sl_hit"
+    upd = updates or {}
+    be_to = bool(_pos_get(pos, "be_timeout", False)) or bool(upd.get("be_timeout"))
+    trailing_active = bool(_pos_get(pos, "trailing_active", False)) or bool(
+        upd.get("trailing_active")
+    )
+    if be_to and _at_breakeven(sl, entry) and not trailing_active:
+        return "be_timeout"
+    return "trailing_hit"
+
+
+def _tp_fill_price(
+    target: float,
+    *,
+    is_long: bool,
+    mark_price: float | None,
+) -> float:
+    """Fill at the TP level, never a retraced mark on the same bar."""
+    px = float(target)
+    if mark_price is None:
+        return px
+    mark = float(mark_price)
+    if is_long and mark > px:
+        return mark
+    if (not is_long) and mark < px:
+        return mark
+    return px
+
+
 def update_trailing_sl(
     pos: dict[str, Any],
     candle_high: float,
@@ -190,7 +237,7 @@ def update_trailing_sl(
         original_sl_f = None
     if original_sl_f is None:
         # Approximate: if already at BE, use atr or 2% of entry
-        atr_guess = float(_pos_get(pos, "atr") or entry * 0.02)
+        atr_guess = float(_pos_get(pos, "atr") or entry * 0.005)
         original_sl_f = (entry - atr_guess) if is_long else (entry + atr_guess)
 
     original_sl_dist = abs(entry - float(original_sl_f))
@@ -317,9 +364,8 @@ def evaluate_exit(
     if sl is not None:
         hit_sl = (sl_check <= sl) if is_long else (sl_check >= sl)
         if hit_sl:
-            is_profitable = (sl >= entry) if is_long else (sl <= entry)
-            # P1: trailing_hit only when SL is actually at/beyond BE (not merely tp1 flag)
-            status = "trailing_hit" if is_profitable else "sl_hit"
+            status = _sl_exit_status(pos, sl, entry, is_long=is_long)
+            is_profitable = status != "sl_hit"
             # Prefer SL price for BE/trail exits so mark gap cannot invent a loss label
             close_price = sl if is_profitable else (cur_price or sl)
             return ExitEvent(action="close", status=status, close_price=close_price)
@@ -331,10 +377,11 @@ def evaluate_exit(
             return ExitEvent(
                 action="close",
                 status="tp2_hit",
-                close_price=cur_price or tp2,
+                close_price=_tp_fill_price(tp2, is_long=is_long, mark_price=cur_price),
             )
 
     # 3) TP1 → hard BE (entry), do not close
+    tp1_just_hit = False
     if tp1 is not None and not tp1_hit:
         hit_tp1 = (tp_check >= tp1) if is_long else (tp_check <= tp1)
         if hit_tp1:
@@ -346,6 +393,7 @@ def evaluate_exit(
                 updates["original_sl"] = sl
             sl = entry
             tp1_hit = True
+            tp1_just_hit = True
             # Continue — may trail / check other exits same bar
 
     # 4) Trailing after TP1 (or when trailing_active)
@@ -384,18 +432,27 @@ def evaluate_exit(
                 updates.update(t_upd)
                 if "sl" in t_upd:
                     sl = float(t_upd["sl"])
-                # Re-check trailing SL same bar
+                # Re-check trailing SL same bar — but not a fresh TP1→BE flatten.
+                # Same 15m wick that tags TP1 often still includes entry; closing
+                # there prints trailing_hit with 0 PnL while the chart shows TP.
                 if sl is not None:
                     sl_check2 = candle_low if is_long else candle_high
                     hit2 = (sl_check2 <= sl) if is_long else (sl_check2 >= sl)
                     if hit2:
-                        is_profitable = (sl >= entry) if is_long else (sl <= entry)
-                        return ExitEvent(
-                            action="close",
-                            status="trailing_hit" if is_profitable else "sl_hit",
-                            close_price=sl if is_profitable else (cur_price or sl),
-                            updates=updates,
-                        )
+                        at_be = _at_breakeven(sl, entry)
+                        if tp1_just_hit and at_be:
+                            pass  # arm BE only; wait for a later bar/tick
+                        else:
+                            status = _sl_exit_status(
+                                pos, sl, entry, is_long=is_long, updates=updates
+                            )
+                            is_profitable = status != "sl_hit"
+                            return ExitEvent(
+                                action="close",
+                                status=status,
+                                close_price=sl if is_profitable else (cur_price or sl),
+                                updates=updates,
+                            )
 
     # 5) Breakeven after N hours without TP1
     if opened_at and tp1 is not None and not tp1_hit and cfg.be_hours > 0:

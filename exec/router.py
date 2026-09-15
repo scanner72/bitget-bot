@@ -100,7 +100,7 @@ def _recompute_levels_for_entry(
     side: str,
 ) -> dict[str, float]:
     """Rebuild SL/TP1/TP2 from ATR using the real fill entry."""
-    from risk.atr import levels_from_atr
+    from risk.atr import levels_from_atr, resolve_atr_floor_pct
 
     atr = _safe_float(meta.get("atr"), None)
     if atr is None or atr <= 0:
@@ -111,7 +111,7 @@ def _recompute_levels_for_entry(
         if old_entry and old_entry > 0 and old_sl is not None:
             atr = abs(old_sl - old_entry)
         else:
-            atr = entry * 0.02
+            atr = entry * resolve_atr_floor_pct()
     levels = levels_from_atr(entry, side, float(atr))
     return {
         "atr": float(levels["atr"]),

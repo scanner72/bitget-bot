@@ -59,7 +59,7 @@ flowchart LR
 
 Sizing: `notional = clamp(RISK / (|entry-sl|/entry), MIN, MAX)`. If those env vars are missing, code falls back to risk `2` / max `100` — this repo’s example file is the intended desk.
 
-ATR levels on open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry×0.02)`; long SL=`entry-1×ATR`, TP1=`+1.5×ATR`, TP2=`+2.5×ATR` (short mirrored). Skip if `atr_pct` &lt; 0.3% or &gt; 6%.
+ATR levels on open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry×ATR_FLOOR_PCT)` (default 0.5%); long SL=`entry-1×ATR`, TP1=`+1.5×ATR`, TP2=`+2.5×ATR` (short mirrored). Skip if `atr_pct` &lt; 0.3% or &gt; 6%.
 
 ---
 
