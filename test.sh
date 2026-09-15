@@ -14,6 +14,7 @@ fi
 
 smokes=(
   scripts/smoke_signal.py
+  scripts/smoke_candidate_log.py
   scripts/smoke_risk.py
   scripts/smoke_decide.py
   scripts/smoke_llm_decide.py
@@ -25,6 +26,7 @@ smokes=(
   scripts/smoke_upnl.py
   scripts/smoke_tick_stops.py
   scripts/smoke_paper_fallback.py
+  scripts/smoke_hub_leverage.py
   scripts/smoke_reconcile.py
   scripts/smoke_chart.py
   scripts/smoke_export_paper_log.py

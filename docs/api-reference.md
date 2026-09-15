@@ -12,13 +12,13 @@ Base: `http://127.0.0.1:8080`. HTML on `/` and `/chart`; everything else JSON. H
   "hub_demo": true,
   "bitget_demo": true,
   "hub_sync_exchange_sl": true,
-  "paper_fallback": true,
+  "paper_fallback": false,
   "agent_mode": "llm",
   "openai_model": "qwen/qwen3.6-27b"
 }
 ```
 
-`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK` is on **and** `exec_mode` is `hub_demo`. `agent_mode` is `rules` or `llm`. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
+`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK=1` **and** `exec_mode` is `hub_demo` (default off — Demo catalog only). `agent_mode` is `rules` or `llm`. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
 
 ## `GET /account` and `GET /equity`
 
@@ -40,7 +40,7 @@ Object, not a bare array (`exec/hub_view.py`):
 }
 ```
 
-`source` is `hub_demo`, `live`, or `paper`. Rows keep ccxt `symbol` plus `symbol_id` / `symbol_display`. Demo rows carry exchange entry/mark/PnL; paper-live rows are tagged as the fallback venue.
+`source` is `hub_demo`, `live`, or `paper`. Rows keep ccxt `symbol` plus `symbol_id` / `symbol_display`. Demo rows carry exchange entry/mark/PnL/`exchange_leverage`; paper-live rows are tagged as the fallback venue. Hub opens set `HUB_LEVERAGE` (default 20) via UTA `set-leverage` before the market order.
 
 ## `GET /decisions?limit=50`
 

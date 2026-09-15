@@ -354,7 +354,7 @@ def health() -> dict[str, Any]:
         "hub_demo": mode == "hub_demo",
         "bitget_demo": bitget_demo_flag or mode == "hub_demo",
         "hub_sync_exchange_sl": hub_sync,
-        "paper_fallback": (os.getenv("PAPER_FALLBACK") or "1").strip().lower()
+        "paper_fallback": (os.getenv("PAPER_FALLBACK") or "0").strip().lower()
         not in {"0", "false", "no", "off"}
         and mode == "hub_demo",
         "agent_mode": _agent_mode_name(),

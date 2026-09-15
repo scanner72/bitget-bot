@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.decide import decide
+from exec.demo_universe import NotOnDemoError
 from exec.paper import PaperBook
 from exec.router import open_position
 from ingest.symbols import to_display
@@ -229,6 +230,9 @@ def evaluate_candidate(
                 None,
             )
             fill_id = (match or {}).get("open_fill_id")
+        except NotOnDemoError as exc:
+            paper_error = f"not_on_demo:{exc}"
+            print(f"[HUB] SKIP not on demo: {exc}")
         except Exception as exc:  # noqa: BLE001
             paper_error = f"{type(exc).__name__}: {exc}"
             print(f"[PAPER] ERROR open failed: {paper_error}")

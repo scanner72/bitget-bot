@@ -10,7 +10,7 @@ This folder is that log. **It is not live mainnet.**
 |-------------------------|---------|
 | Bitget **UTA Demo** (`hub_demo`, `paptrading`) | Exchange fills on the Demo book |
 | **Paper shadow** | Local book used for ATR TP1 / BE / trail next to Demo |
-| **Paper-live** (`PAPER_FALLBACK`) | Local fill when a pair is missing on Demo. **Do not add that PnL to Demo equity** |
+| **Paper-live** (`PAPER_FALLBACK=1`) | Local fill when a pair is missing on Demo. **Off by default.** Do not add that PnL to Demo equity |
 
 `BITGET_ALLOW_LIVE=0`. Runtime `data/*.jsonl` is gitignored and is never committed with keys.
 

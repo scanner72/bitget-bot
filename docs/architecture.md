@@ -21,7 +21,7 @@ flowchart LR
 | Path | What it does |
 |------|----------------|
 | `ingest/bitget_ws.py`, `bitget_ohlcv.py`, `candle_cache.py` | Public WS candles/tickers (`MARKET_DATA_MODE=ws`) + REST bootstrap. No keys. Cache is the configured TF (`TIMEFRAME=15m`), not a 1m/5m/15m stack. |
-| `ingest/universe.py` | Auto-scan USDT-M swaps only: crypto + rToken/RWA (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`). |
+| `ingest/universe.py` | Auto-scan USDT-M swaps: crypto + rToken (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`) in paper/live. `hub_demo` scans the **full** Demo instrument catalog. |
 | `signals/engine.py`, `signals/divergence/` | Wilder RSI 14, swing pivots, `BULLISH_DIV` / `BEARISH_DIV` / `LEVEL_CROSS_*`. |
 | `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. |
 | `agent/decide.py` | `AGENT_MODE=rules` or `llm` (OpenAI-compatible). LLM errors → rules + `llm_fallback`. |
@@ -33,11 +33,11 @@ flowchart LR
 
 | `EXEC_MODE` | Behavior |
 |-------------|----------|
-| `hub_demo` | Bitget UTA Demo market + exchange SL/TP2; paper shadow for TP1/BE/trail and UI. |
+| `hub_demo` | Bitget UTA Demo market at `HUB_LEVERAGE=20` + exchange SL/TP2; paper shadow for TP1/BE/trail and UI. |
 | `paper` | Local fills only. |
 | `live` | Blocked unless `BITGET_ALLOW_LIVE=1`. Not for the hackathon demo. |
 
-`PAPER_FALLBACK=1` in `hub_demo`: if the pair is not on Demo, fill the paper book at live mark. Demo wallet equity stays Bitget; paper-live is a separate book.
+`PAPER_FALLBACK=0` (default): `hub_demo` scans **all** symbols in the Bitget Demo instrument catalog (not public top-N). `PAPER_FALLBACK=1` restores paper-live fills at live mark for names missing on Demo. That PnL is a separate book from Demo equity.
 
 ## Ports
 

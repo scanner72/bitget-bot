@@ -10,6 +10,7 @@ from typing import Any
 
 from exec.paper import PaperBook, close_paper, open_paper
 from exec.demo_universe import (
+    NotOnDemoError,
     drop_demo_symbol,
     is_missing_pair_error,
     is_paper_venue,
@@ -366,9 +367,13 @@ def open_position(
                 book=book,
                 reason="not_on_demo",
             )
+    elif mode == "hub_demo":
+        tradable = symbol_tradable_on_demo(symbol)
+        if tradable is False:
+            raise NotOnDemoError(symbol)
 
     if mode in {"hub_demo", "live"}:
-        from exec.bitget_hub import BitgetUtaClient
+        from exec.bitget_hub import BitgetUtaClient, hub_leverage
 
         client = BitgetUtaClient.from_env()
         if mode == "hub_demo" and not client.demo:
@@ -378,6 +383,7 @@ def open_position(
         qty = _qty_from_size(size_usd, signal_price)
         try:
             placed = client.place_perp_market(symbol, side, qty)
+            meta["hub_leverage"] = hub_leverage()
         except Exception as exc:
             if (
                 mode == "hub_demo"
@@ -396,6 +402,10 @@ def open_position(
                     book=book,
                     reason="hub_25100",
                 )
+            if mode == "hub_demo" and is_missing_pair_error(exc):
+                drop_demo_symbol(symbol)
+                print(f"[HUB] SKIP not on demo {symbol}: {exc}")
+                raise NotOnDemoError(f"{symbol}: {exc}") from exc
             raise
         meta["exec_venue"] = "hub"
         meta["hub_order_id"] = placed.get("orderId")
@@ -403,7 +413,7 @@ def open_position(
         meta["hub_qty"] = qty
         print(
             f"[HUB] OPEN {mode} {side} {symbol} qty={qty} @~{signal_price} "
-            f"orderId={placed.get('orderId')}"
+            f"{meta.get('hub_leverage')}x orderId={placed.get('orderId')}"
         )
 
         # Prefer real exchange avg entry + mark, then rebuild SL/TP from that fill.

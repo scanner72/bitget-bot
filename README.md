@@ -17,10 +17,9 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 
 | Piece | This desk |
 |-------|-----------|
-| Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close, exchange SL+TP2 |
+| Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close at `HUB_LEVERAGE=20`, exchange SL+TP2 |
 | Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
-| Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
-| Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
+| Scan | Full Bitget **Demo UTA** catalog (`hub_demo`). Public top-N is not used. `PAPER_FALLBACK=0` |
 | TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
 | Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
 | Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
@@ -54,6 +53,7 @@ flowchart LR
 | Max positions | `MAX_POSITIONS` | `15` |
 | Cooldown | `COOLDOWN_SEC` | `900` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
+| Hub leverage | `HUB_LEVERAGE` | `20` (exchange; `PAPER_LEVERAGE` stays 1 — size_usd is notional) |
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` (3 consecutive losses / WR 30 / 48h) |
 | TF blocker | `TF_BLOCKER_ENABLED` | `0` |
 

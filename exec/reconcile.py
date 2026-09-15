@@ -76,6 +76,12 @@ def _hub_open_keys() -> tuple[set[tuple[str, str]], str | None]:
 
         client = BitgetUtaClient.from_env()
         live = client.current_positions() or {}
+        try:
+            n_lev = client.sync_open_positions_leverage(live)
+            if n_lev:
+                print(f"[HUB] leverage synced n={n_lev}")
+        except Exception as lev_exc:  # noqa: BLE001
+            print(f"[HUB] leverage sync skipped: {lev_exc}")
         items = live.get("list") if isinstance(live, dict) else live
         keys: set[tuple[str, str]] = set()
         for it in items or []:
