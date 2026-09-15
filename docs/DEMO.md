@@ -24,7 +24,7 @@ cd C:\bitget-bot
 
 Говорите по пунктам (RU, можно вкраплениями EN):
 
-1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI-дивергенция → decide (`rules` или `llm`, fallback на rules) → risk-gate → **Bitget Demo UTA** market open/close + paper shadow (TP1 50% + BE/trail на остатке) → FastAPI dashboard.
+1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI-дивергенция → decide (`rules`, опционально LLM-veto) → risk-gate → **Bitget Demo UTA** market open/close + paper shadow (TP1 50% + BE/trail на остатке; 8ч без TP1 — закрытие по марку) → FastAPI dashboard.
 2. **Трек:** Agent Trading / Divergent Agent Desk. **Live mainnet не в scope** — только Demo (`paptrading`); `BITGET_ALLOW_LIVE=0`.
 3. **Стек:** public WS candles (`MARKET_DATA_MODE=ws`) + REST bootstrap → `signals/` → `desk` loop → `agent.decide` → `risk.gate` → `exec.router` → `exec.bitget_hub` + `exec.paper` → `api` `:8080` (исполнение остаётся REST).
 4. **Риски:** risk-to-SL sizing (`RISK_USD_PER_TRADE`), exchange SL+TP2 при open, sync SL после TP1; daily loss kill / max positions / cooldown — env + `decisions.jsonl`.

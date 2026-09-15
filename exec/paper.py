@@ -364,7 +364,7 @@ class PaperBook:
         for k in (
             "sl", "tp1", "tp2", "atr", "atr_pct", "original_sl",
             "trailing_active", "trail_price", "tp1_hit", "tp1_hit_ts",
-            "be_timeout", "be_timeout_ts", "exit_status",
+            "be_timeout", "be_timeout_ts", "stale_no_tp1", "stale_no_tp1_ts", "exit_status",
         ):
             if k in pos and pos[k] is not None:
                 meta[k] = pos[k]

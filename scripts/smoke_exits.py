@@ -253,39 +253,65 @@ def main() -> int:
         pos_e2 = next(p for p in book.list_open() if p["position_id"] == pid_e)
         _assert(abs(float(pos_e2["size_usd"]) - 50.0) < 1e-9, pos_e2)
 
-        # --- Case F: BE_HOURS then SL at entry is be_timeout, not trailing_hit
-        from datetime import timezone as _tz
-
+        # --- Case F: BE_HOURS without TP1 closes at mark (stale_no_tp1), not SL at entry
         pos_f = {
             "symbol": "TEST6/USDT:USDT",
             "side": "long",
             "entry_price": entry,
-            "sl": entry,
+            "sl": 98.0,
             "tp1": 103.0,
             "tp2": 105.0,
             "original_sl": 98.0,
-            "be_timeout": True,
             "opened_ts": "2026-01-01T00:00:00+00:00",
-            "meta": {"sl": entry, "be_timeout": True, "original_sl": 98.0, "tp1": 103.0},
+            "meta": {"sl": 98.0, "original_sl": 98.0, "tp1": 103.0},
         }
+        cfg_stale = ExitConfig(
+            be_hours=8,
+            max_hold_hours=999,
+            max_loss_pct_of_margin=0,
+            early_close_hours=0,
+            enable_trailing=True,
+        )
+        ev_early = evaluate_exit(
+            pos_f,
+            candle_high=101.0,
+            candle_low=99.0,
+            mark_price=99.5,
+            df=_df([(100, 101.0, 99.0, 99.5)] * 20),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 4, 0, tzinfo=timezone.utc),
+        )
+        print(f"BE early: action={ev_early.action} status={ev_early.status}")
+        _assert(ev_early.action != "close" or ev_early.status != "stale_no_tp1", ev_early)
+
         ev_be = evaluate_exit(
             pos_f,
             candle_high=101.0,
             candle_low=99.0,
             mark_price=99.5,
             df=_df([(100, 101.0, 99.0, 99.5)] * 20),
-            cfg=ExitConfig(
-                be_hours=8,
-                max_hold_hours=999,
-                max_loss_pct_of_margin=0,
-                early_close_hours=0,
-                enable_trailing=True,
-            ),
-            now=datetime(2026, 1, 1, 8, 5, tzinfo=_tz.utc),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 8, 5, tzinfo=timezone.utc),
         )
-        print(f"BE timeout SL: action={ev_be.action} status={ev_be.status} px={ev_be.close_price}")
-        _assert(ev_be.action == "close" and ev_be.status == "be_timeout", ev_be)
-        _assert(abs(float(ev_be.close_price) - entry) < 1e-9, ev_be)
+        print(f"Stale no TP1: action={ev_be.action} status={ev_be.status} px={ev_be.close_price}")
+        _assert(ev_be.action == "close" and ev_be.status == "stale_no_tp1", ev_be)
+        _assert(abs(float(ev_be.close_price) - 99.5) < 1e-9, ev_be)
+
+        pos_f_tp1 = dict(pos_f)
+        pos_f_tp1["tp1_hit"] = True
+        pos_f_tp1["sl"] = entry
+        pos_f_tp1["meta"] = {**pos_f["meta"], "tp1_hit": True, "sl": entry}
+        ev_after_tp1 = evaluate_exit(
+            pos_f_tp1,
+            candle_high=101.0,
+            candle_low=100.2,
+            mark_price=100.5,
+            df=_df([(100, 101.0, 100.2, 100.5)] * 20),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc),
+        )
+        print(f"After TP1 9h: action={ev_after_tp1.action} status={ev_after_tp1.status}")
+        _assert(ev_after_tp1.status != "stale_no_tp1", ev_after_tp1)
 
         # --- Case G: TP2 tagged but mark retraced — fill at TP2, not the dump
         meta_g = dict(levels)
@@ -316,7 +342,7 @@ def main() -> int:
         book.close_paper(pid_e, entry, meta={"exit_status": "smoke_cleanup"})
         book.close_paper(pid_g, float(ev_tp2_mark.close_price), meta={"exit_status": "tp2_hit"})
 
-        print("smoke_exits OK: sl_hit + tp2_hit + tp1_partial + hard_be_p1 + same_bar_tp1 + be_timeout + tp2_fill")
+        print("smoke_exits OK: sl_hit + tp2_hit + tp1_partial + hard_be_p1 + same_bar_tp1 + stale_no_tp1 + tp2_fill")
         return 0
 
 

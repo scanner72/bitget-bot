@@ -13,7 +13,7 @@ Local: `.venv` then `python scripts/run_api.py` and `python scripts/run_signal_l
 
 - `ingest/` — public WS + REST, `TIMEFRAME=15m`
 - `signals/engine.py`, `signals/divergence/` — RSI 14, div + level-cross
-- `agent/decide.py` — `rules` or `llm` (Groq OpenAI-compatible)
+- `agent/decide.py` — `rules` or `llm` veto (Groq OpenAI-compatible)
 - `risk/gate.py`, `sizing.py`, `exits.py`
 - `exec/bitget_hub.py`, `paper.py`, `router.py`
 - `api/app.py` — `/health` returns `ok`, not `status`

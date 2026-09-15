@@ -33,12 +33,13 @@ Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`.
 
 ## ATR exits (paper shadow + exchange parachute)
 
-On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * ATR_FLOOR_PCT)` (default **0.5%**, env `ATR_FLOOR_PCT`). A 2% floor pushed 15m TP1/TP2 so far that quiet names never tagged TP, then `BE_HOURS` closed at entry (`trailing_hit` / 0 PnL).
+On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * ATR_FLOOR_PCT)` (default **0.5%**, env `ATR_FLOOR_PCT`). A 2% floor pushed 15m TP1/TP2 so far that quiet names never tagged TP, then `BE_HOURS` used to flatten at entry (0 PnL).
 
 - Long: SL = entry − 1×ATR, TP1 = +1.5×ATR, TP2 = +2.5×ATR (short mirrored).
 - Skip open if `atr_pct` &lt; 0.3% or &gt; 6%.
 - Exchange gets **SL + TP2** on open (`HUB_SYNC_EXCHANGE_SL=1` also pushes SL after BE/trail).
-- **TP1** closes `TP1_CLOSE_FRAC` (default **50%**, same as Divergent) at the TP1 price; the runner stays open with SL at breakeven and trailing. `TP1_CLOSE_FRAC=0` restores the old BE-only path (no take). The same bar that first tags TP1 does **not** flatten the runner at the new BE. `BE_HOURS` SL fills are `be_timeout`, not `trailing_hit`. TP2 fills at the TP2 price, not a retraced mark.
+- **TP1** closes `TP1_CLOSE_FRAC` (default **50%**, same as Divergent) at the TP1 price; the runner stays open with SL at breakeven and trailing. `TP1_CLOSE_FRAC=0` restores the old BE-only path (no take). The same bar that first tags TP1 does **not** flatten the runner at the new BE.
+- **`BE_HOURS` without TP1** closes at **mark** (`stale_no_tp1`) — lock a small win or cut a real loss. Do not move SL to entry and print a fake 0. After TP1, no time BE. In-flight rows that already parked SL at entry still label as `be_timeout` if that SL fills. TP2 fills at the TP2 price, not a retraced mark.
 - Tick path: `TICK_STOPS=1` evaluates open positions on each WS quote; 30s loop is backup.
 
 ## BTC / pair policy

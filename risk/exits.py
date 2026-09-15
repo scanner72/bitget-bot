@@ -1,7 +1,8 @@
 """Paper TP/SL + risk exits (ported from divergent paper_tracker).
 
 Statuses: sl_hit, tp1_hit (take TP1_CLOSE_FRAC, runner stays with SL at BE), tp2_hit,
-trailing_hit, dollar_stop, expired.
+trailing_hit, stale_no_tp1 (BE_HOURS without TP1, close at mark), be_timeout
+(legacy SL-at-entry fill), dollar_stop, expired.
 """
 
 from __future__ import annotations
@@ -480,20 +481,22 @@ def evaluate_exit(
                                 updates=updates,
                             )
 
-    # 5) Breakeven after N hours without TP1
+    # 5) Stale: BE_HOURS without TP1 → close at mark (not a fake SL fill at entry)
     if opened_at and tp1 is not None and not tp1_hit and cfg.be_hours > 0:
         elapsed_h = (now - opened_at).total_seconds() / 3600.0
-        if elapsed_h >= cfg.be_hours and sl is not None:
-            sl_at_loss = (sl < entry) if is_long else (sl > entry)
-            if sl_at_loss:
-                updates["sl"] = entry
-                updates["be_timeout"] = True
-                updates["be_timeout_ts"] = now.isoformat()
-                if _pos_get(pos, "original_sl") is None:
-                    updates["original_sl"] = sl
-                sl = entry
+        if elapsed_h >= cfg.be_hours:
+            px = cur_price if cur_price is not None else entry
+            return ExitEvent(
+                action="close",
+                status="stale_no_tp1",
+                close_price=px,
+                updates={
+                    "stale_no_tp1": True,
+                    "stale_no_tp1_ts": now.isoformat(),
+                },
+            )
 
-    # If TP1/BE already active, hard-clamp any pending SL update to entry
+    # If TP1 already active, hard-clamp any pending SL update to entry
     if updates.get("sl") is not None and (
         tp1_hit or updates.get("tp1_hit") or updates.get("be_timeout")
     ):

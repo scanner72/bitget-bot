@@ -10,6 +10,9 @@ This does **not** rewrite `data/` fills. SUI paper-live is reconstructed
 Holds shorter than one 15m bar keep actual PnL (no look-ahead).
 ATR is capped at the desk filter `ATR_PCT_MAX=6%`.
 
+Replay used the then-current `BE_HOURS` SL-to-entry path (`be_timeout`).
+The desk now closes those stale trades at mark (`stale_no_tp1`).
+
 - Closed trades in log: **35**
 - Actual realized (log): **+0.41 USDT**
 - Counterfactual realized+MTM on those: **+22.71 USDT**
