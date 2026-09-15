@@ -55,11 +55,13 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _env_types(name: str = "ALLOWED_TYPES") -> set[str] | None:
+    """Default is DIV only. LEVEL_CROSS is detected but not traded unless listed."""
+    default = {"BULLISH_DIV", "BEARISH_DIV"}
     v = os.getenv(name)
     if v is None or str(v).strip() == "":
-        return None
+        return set(default)
     parts = [p.strip().upper() for p in str(v).split(",") if p.strip()]
-    return set(parts) if parts else None
+    return set(parts) if parts else set(default)
 
 
 def _parse_ts(raw: Any) -> float | None:

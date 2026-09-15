@@ -6,6 +6,7 @@ Exit 0 on success. Paper-only; no exchange.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from risk.gate import RiskGate, RiskLimits, RiskState  # noqa: E402
+from risk.gate import RiskGate, RiskLimits, RiskState, _env_types  # noqa: E402
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -89,7 +90,44 @@ def main() -> int:
         print(f"check6(reload) allow={r6['allowed']} reason={r6['reason']}")
         _assert(r6["allowed"] is False and r6["reason"] == "daily_loss_kill", f"reload kill: {r6}")
 
-    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill)")
+        gate_types = RiskGate(
+            limits=RiskLimits(
+                max_notional_usd=100.0,
+                max_daily_loss_usd=50.0,
+                max_positions=3,
+                one_position_per_symbol=True,
+                cooldown_sec=0.0,
+                allowed_types={"BULLISH_DIV", "BEARISH_DIV"},
+            ),
+            state=RiskState(),
+            state_path=tmp_path / "risk_types.json",
+            persist=False,
+        )
+        r_cross = gate_types.check(
+            {"symbol": "XAG/USDT:USDT", "type": "LEVEL_CROSS_UP"}, 50.0
+        )
+        print(f"check_cross allow={r_cross['allowed']} reason={r_cross['reason']}")
+        _assert(
+            r_cross["allowed"] is False and str(r_cross["reason"]).startswith("type_not_allowed"),
+            r_cross,
+        )
+        r_div = gate_types.check({"symbol": "BTC/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
+        _assert(r_div["allowed"] is True, r_div)
+
+        old_types = os.environ.pop("ALLOWED_TYPES", None)
+        try:
+            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV"}, _env_types())
+            os.environ["ALLOWED_TYPES"] = ""
+            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV"}, "empty ALLOWED_TYPES")
+            os.environ["ALLOWED_TYPES"] = "BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP"
+            _assert("LEVEL_CROSS_UP" in _env_types(), _env_types())
+        finally:
+            if old_types is None:
+                os.environ.pop("ALLOWED_TYPES", None)
+            else:
+                os.environ["ALLOWED_TYPES"] = old_types
+
+    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill, type_not_allowed)")
     return 0
 
 

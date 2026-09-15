@@ -12,7 +12,7 @@ alwaysApply: true
 
 ## Applied on bitget (aligned to v1, 2026-09-11)
 - Both sides: `ALLOW_LONG=1`, `ALLOW_SHORT=1`
-- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN`
+- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV` (LEVEL_CROSS off 2026-09-15; fade CROSS lost on this Demo book). Pair blocker on.
 - `RSI_LONG_MAX=30` (v1 `pairs.rsi_long_max`)
 - Full symmetric regime: bearish blocks long, bullish blocks short
 - `BTC_REGIME_TF=1h` (user standard; live DB still had 4h)
@@ -29,6 +29,7 @@ alwaysApply: true
 2. Do not copy v1 `max_open_positions=60` unless the user asks — Bitget Demo + $500 notionals stay at 15.
 3. Soft alternatives if dead zones wipe the book: size-down instead of hard ban; or require both regime+EMA50 before blocking.
 4. Do not let timeframe blocker ban the only TF (`15m`). If paper TF PnL is near zero, leave the book open.
+5. Do not restore `LEVEL_CROSS_*` in `ALLOWED_TYPES` unless the user asks. Fade CROSS lost on the Demo book; sign flip is a separate experiment.
 
 ## Note
 Live divergent DB on 2026-09-11 still had `btc_regime_tf=4h`; bitget follows user choice **1h** as the intended standard.

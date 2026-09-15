@@ -7,7 +7,7 @@
 
 **[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md) · [Evidence log](docs/evidence/paper_trading_log.csv)
 
-Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI / level-cross signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
+Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI divergence signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
 
 **Not live mainnet.** `BITGET_ALLOW_LIVE=0`. Deadline **21 Sep 2026 24:00 UTC+8**. Form: [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) — submit only after GitHub + paper log + video + X post exist.
 
@@ -22,7 +22,7 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 | Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
 | Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
 | TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
-| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
+| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV` (LEVEL_CROSS detected, not traded) |
 | Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
 | BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
 

@@ -4,12 +4,14 @@ Detector: `signals/engine.py` + `signals/divergence/detector.py`. Config: `signa
 
 ## Types (`ALLOWED_TYPES`)
 
-| Type | Meaning |
-|------|---------|
-| `BULLISH_DIV` | Price lower low, RSI 14 higher low → long candidate |
-| `BEARISH_DIV` | Price higher high, RSI 14 lower high → short candidate |
-| `LEVEL_CROSS_UP` | Level-cross long |
-| `LEVEL_CROSS_DOWN` | Level-cross short |
+Desk trades **divergence only** (`BULLISH_DIV`, `BEARISH_DIV`). The detector still emits `LEVEL_CROSS_*` (support/resistance break); the risk gate drops them (`type_not_allowed`). Restore via `.env` if you want them back.
+
+| Type | Meaning | Traded |
+|------|---------|--------|
+| `BULLISH_DIV` | Price lower low, RSI 14 higher low → long candidate | yes |
+| `BEARISH_DIV` | Price higher high, RSI 14 lower high → short candidate | yes |
+| `LEVEL_CROSS_UP` | Close through bearish resistance. Code would fade (short); gate drops it. | no |
+| `LEVEL_CROSS_DOWN` | Close through bullish support. Code would fade (long); gate drops it. | no |
 
 Pivots: lookback 5 bars each side (`DIV_LOOKBACK_LEFT/RIGHT`). Agent then applies `RSI_LONG_MAX=30` (no long if RSI above that), `RSI_OVERBOUGHT=70` / `RSI_OVERSOLD=30`, BTC regime/momentum, and the pair blocker.
 

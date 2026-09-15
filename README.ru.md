@@ -7,7 +7,7 @@
 
 **[English](README.md)** · **[Русский](README.ru.md)** · [Архитектура](docs/architecture.md) · [Риск](docs/risk-engine.md) · [API](docs/api-reference.md) · [Видео](docs/DEMO.md) · [Подача](docs/SUBMISSION.md) · [Лог сделок](docs/evidence/paper_trading_log.csv)
 
-Хакатон Bitget AI **S2**, трек **Agentic Trading**. Публичный OHLCV Bitget → сигналы RSI / level-cross → rules или LLM → риск-гейт → **Bitget UTA Demo** (`hub_demo`) + локальный paper shadow → дашборд FastAPI на `:8080`.
+Хакатон Bitget AI **S2**, трек **Agentic Trading**. Публичный OHLCV Bitget → сигналы RSI-дивергенции → rules или LLM → риск-гейт → **Bitget UTA Demo** (`hub_demo`) + локальный paper shadow → дашборд FastAPI на `:8080`.
 
 **Не live mainnet.** `BITGET_ALLOW_LIVE=0`. Дедлайн **21 Sep 2026 24:00 UTC+8**. Форма: [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) — только после GitHub + paper log + видео + поста в X.
 
