@@ -17,6 +17,7 @@ Code: `risk/gate.py`, `risk/sizing.py`, `risk/exits.py`, `risk/atr.py`. Values b
 | Longs only if RSI ≤ | `RSI_LONG_MAX` | `30` |
 | RSI skip extremes | `RSI_OVERBOUGHT` / `RSI_OVERSOLD` | `70` / `30` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
+| Hub leverage | `HUB_LEVERAGE` | `20` (exchange). `PAPER_LEVERAGE` stays `1` — `size_usd` is already notional |
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` |
 | Timeframe blocker | `TF_BLOCKER_ENABLED` | `0` — do not enable; 15m is the only TF |
 
@@ -29,7 +30,7 @@ dist = |entry - sl| / entry
 notional = clamp(RISK_USD_PER_TRADE / dist, MIN_NOTIONAL_USD, MAX_NOTIONAL_USD)
 ```
 
-Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`.
+Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`. Hub opens set Bitget leverage to `HUB_LEVERAGE` (default **20**) before the market order — same notional, less margin. `PAPER_LEVERAGE` is only the paper dollar-stop multiplier and stays `1`.
 
 ## ATR exits (paper shadow + exchange parachute)
 

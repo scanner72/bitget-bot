@@ -79,7 +79,7 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 
 ## Technical smoke (before submit)
 
-- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`
+- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`, `HUB_LEVERAGE=20`
 - [ ] Smokes: `smoke_signal` → `smoke_bitget` → `smoke_hub_demo` → `smoke_risk` → `smoke_decide` → `smoke_paper`
 - [ ] Desk once: `python scripts/run_signal_loop.py --once`
 - [ ] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true

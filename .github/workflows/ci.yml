@@ -37,6 +37,7 @@ jobs:
           python scripts/smoke_upnl.py
           python scripts/smoke_tick_stops.py
           python scripts/smoke_paper_fallback.py
+          python scripts/smoke_hub_leverage.py
           python scripts/smoke_reconcile.py
           python scripts/smoke_chart.py
           python scripts/smoke_export_paper_log.py

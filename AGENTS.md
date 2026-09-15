@@ -6,6 +6,7 @@ Hackathon desk: public Bitget OHLCV → signals → decide → risk → **UTA De
 
 - Keep `BITGET_ALLOW_LIVE=0`.
 - Size every entry through `risk/sizing.py`; gate through `risk/gate.py`.
+- Hub opens at `HUB_LEVERAGE=20` (exchange). Leave `PAPER_LEVERAGE=1` — `size_usd` is notional.
 - Prefer `.env.example` numbers (`RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15`) over stale code fallbacks.
 - Leave `TF_BLOCKER_ENABLED=0`. Pair blocker on.
 - Treat paper-live fills as a separate book from Demo equity.

@@ -13,7 +13,7 @@ import json
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode
@@ -88,6 +88,27 @@ def ccxt_to_bitget_symbol(symbol: str) -> str:
     return s.replace("-", "").replace("_", "")
 
 
+def hub_leverage() -> int:
+    """Exchange leverage for hub_demo/live opens. Default 20. Not PAPER_LEVERAGE."""
+    raw = _env("HUB_LEVERAGE", "20")
+    try:
+        lev = int(float(raw))
+    except ValueError:
+        lev = 20
+    return max(1, min(125, lev))
+
+
+def _pos_side_token(pos_side: str | None) -> str | None:
+    if not pos_side:
+        return None
+    side = str(pos_side).strip().lower()
+    if side in {"long", "buy"}:
+        return "long"
+    if side in {"short", "sell"}:
+        return "short"
+    return None
+
+
 @dataclass
 class BitgetUtaClient:
     api_key: str
@@ -95,6 +116,7 @@ class BitgetUtaClient:
     passphrase: str
     demo: bool = True
     timeout_sec: float = 20.0
+    _leverage_ok: set[tuple[str, int]] = field(default_factory=set, repr=False, compare=False)
 
     @classmethod
     def from_env(cls) -> "BitgetUtaClient":
@@ -315,6 +337,96 @@ class BitgetUtaClient:
         data = self.request("POST", "/api/v3/trade/place-order", body=params)
         return data.get("data") or {}
 
+    def set_leverage(
+        self,
+        symbol: str,
+        leverage: int | str | None = None,
+        *,
+        pos_side: str | None = None,
+        category: str = "USDT-FUTURES",
+        margin_mode: str = "crossed",
+    ) -> Any:
+        """POST /api/v3/account/set-leverage — UTA futures leverage."""
+        lev = str(int(leverage) if leverage is not None else hub_leverage())
+        body: dict[str, Any] = {
+            "category": category,
+            "symbol": ccxt_to_bitget_symbol(symbol),
+            "leverage": lev,
+            "marginMode": margin_mode or "crossed",
+        }
+        side = _pos_side_token(pos_side)
+        if side:
+            body["posSide"] = side
+        data = self.request("POST", "/api/v3/account/set-leverage", body=body)
+        return data.get("data")
+
+    def ensure_leverage(
+        self,
+        symbol: str,
+        *,
+        pos_side: str | None = None,
+        leverage: int | None = None,
+    ) -> int:
+        """Set HUB_LEVERAGE before a hub open. Cached per process/symbol."""
+        lev = int(leverage if leverage is not None else hub_leverage())
+        bg = ccxt_to_bitget_symbol(symbol)
+        cache_key = (bg, lev)
+        if cache_key in self._leverage_ok:
+            return lev
+        try:
+            self.set_leverage(symbol, lev)
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            side = _pos_side_token(pos_side)
+            isolated = "posside" in msg or "pos side" in msg or "isolated" in msg
+            if side and isolated:
+                self.set_leverage(symbol, lev, pos_side=side, margin_mode="isolated")
+            else:
+                raise
+        self._leverage_ok.add(cache_key)
+        print(f"[HUB] leverage {bg} {lev}x")
+        return lev
+
+    def sync_open_positions_leverage(self, live: Any | None = None) -> int:
+        """Bump open USDT-M positions that are not already at HUB_LEVERAGE."""
+        target = hub_leverage()
+        if live is None:
+            live = self.current_positions() or {}
+        if isinstance(live, dict):
+            items = live.get("list") or live.get("data") or []
+        else:
+            items = live or []
+        n = 0
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            sym = str(it.get("symbol") or "")
+            if not sym:
+                continue
+            try:
+                total = it.get("total")
+                avail = it.get("available")
+                size = float(total if total is not None else (avail or 0))
+            except (TypeError, ValueError):
+                size = 0.0
+            if size <= 0:
+                continue
+            try:
+                cur = int(float(it.get("leverage") or 0))
+            except (TypeError, ValueError):
+                cur = 0
+            bg = ccxt_to_bitget_symbol(sym)
+            if cur == target:
+                self._leverage_ok.add((bg, target))
+                continue
+            side = it.get("posSide") or it.get("holdSide")
+            try:
+                self.ensure_leverage(sym, pos_side=str(side) if side else None)
+                n += 1
+            except Exception as exc:  # noqa: BLE001
+                print(f"[HUB] leverage {bg} skipped: {exc}")
+        return n
+
     def cancel_order(
         self,
         *,
@@ -340,6 +452,7 @@ class BitgetUtaClient:
         *,
         pos_side: str | None = None,
         reduce_only: bool = False,
+        set_leverage: bool | None = None,
     ) -> dict[str, Any]:
         """Convenience: USDT-FUTURES limit. side buy/sell; pos_side long/short."""
         bitget_symbol = ccxt_to_bitget_symbol(symbol)
@@ -352,11 +465,14 @@ class BitgetUtaClient:
             default_pos = "short"
         else:
             raise ValueError(f"invalid side: {side}")
+        hold = pos_side or default_pos
+        if (not reduce_only) if set_leverage is None else set_leverage:
+            self.ensure_leverage(symbol, pos_side=hold)
         body: dict[str, Any] = {
             "category": "USDT-FUTURES",
             "symbol": bitget_symbol,
             "side": order_side,
-            "posSide": (pos_side or default_pos),
+            "posSide": hold,
             "orderType": "limit",
             "price": str(price),
             "qty": str(qty),
@@ -375,6 +491,7 @@ class BitgetUtaClient:
         *,
         pos_side: str | None = None,
         reduce_only: bool = False,
+        set_leverage: bool | None = None,
     ) -> dict[str, Any]:
         """USDT-FUTURES market. side long/buy or short/sell; pos_side long/short."""
         bitget_symbol = ccxt_to_bitget_symbol(symbol)
@@ -387,11 +504,14 @@ class BitgetUtaClient:
             default_pos = "short"
         else:
             raise ValueError(f"invalid side: {side}")
+        hold = pos_side or default_pos
+        if (not reduce_only) if set_leverage is None else set_leverage:
+            self.ensure_leverage(symbol, pos_side=hold)
         body: dict[str, Any] = {
             "category": "USDT-FUTURES",
             "symbol": bitget_symbol,
             "side": order_side,
-            "posSide": (pos_side or default_pos),
+            "posSide": hold,
             "orderType": "market",
             "qty": str(qty),
         }
@@ -422,6 +542,7 @@ class BitgetUtaClient:
             qty,
             pos_side=pos_side,
             reduce_only=False,
+            set_leverage=False,
         )
 
 

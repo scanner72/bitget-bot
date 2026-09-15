@@ -368,7 +368,7 @@ def open_position(
             )
 
     if mode in {"hub_demo", "live"}:
-        from exec.bitget_hub import BitgetUtaClient
+        from exec.bitget_hub import BitgetUtaClient, hub_leverage
 
         client = BitgetUtaClient.from_env()
         if mode == "hub_demo" and not client.demo:
@@ -378,6 +378,7 @@ def open_position(
         qty = _qty_from_size(size_usd, signal_price)
         try:
             placed = client.place_perp_market(symbol, side, qty)
+            meta["hub_leverage"] = hub_leverage()
         except Exception as exc:
             if (
                 mode == "hub_demo"
@@ -403,7 +404,7 @@ def open_position(
         meta["hub_qty"] = qty
         print(
             f"[HUB] OPEN {mode} {side} {symbol} qty={qty} @~{signal_price} "
-            f"orderId={placed.get('orderId')}"
+            f"{meta.get('hub_leverage')}x orderId={placed.get('orderId')}"
         )
 
         # Prefer real exchange avg entry + mark, then rebuild SL/TP from that fill.

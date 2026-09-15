@@ -33,7 +33,7 @@ flowchart LR
 
 | `EXEC_MODE` | Behavior |
 |-------------|----------|
-| `hub_demo` | Bitget UTA Demo market + exchange SL/TP2; paper shadow for TP1/BE/trail and UI. |
+| `hub_demo` | Bitget UTA Demo market at `HUB_LEVERAGE=20` + exchange SL/TP2; paper shadow for TP1/BE/trail and UI. |
 | `paper` | Local fills only. |
 | `live` | Blocked unless `BITGET_ALLOW_LIVE=1`. Not for the hackathon demo. |
 
