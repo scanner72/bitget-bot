@@ -17,7 +17,7 @@ Pivots: lookback 5 bars each side (`DIV_LOOKBACK_LEFT/RIGHT`). Agent then applie
 
 Not swing-based 2R/3R targets. Stops and targets are **ATR** (`risk/atr.py`, `risk/exits.py`):
 
-1. Market open on Demo (`hub_demo`) at `HUB_LEVERAGE=20`, or paper-live fallback.
+1. Market open on Demo (`hub_demo`) at `HUB_LEVERAGE=20`. Names missing from the Demo catalog are skipped (`PAPER_FALLBACK=0`).
 2. Exchange strategy order: SL + TP2.
 3. Local TP1 → SL to breakeven + trailing; size stays open.
 4. Close: TP2, trail, SL, dollar-stop, or time stop.

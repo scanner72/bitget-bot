@@ -12,13 +12,13 @@ Base: `http://127.0.0.1:8080`. HTML on `/` and `/chart`; everything else JSON. H
   "hub_demo": true,
   "bitget_demo": true,
   "hub_sync_exchange_sl": true,
-  "paper_fallback": true,
+  "paper_fallback": false,
   "agent_mode": "llm",
   "openai_model": "qwen/qwen3.6-27b"
 }
 ```
 
-`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK` is on **and** `exec_mode` is `hub_demo`. `agent_mode` is `rules` or `llm`. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
+`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK=1` **and** `exec_mode` is `hub_demo` (default off — Demo catalog only). `agent_mode` is `rules` or `llm`. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
 
 ## `GET /account` and `GET /equity`
 

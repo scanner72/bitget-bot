@@ -44,10 +44,14 @@ def _ttl_sec() -> float:
 
 
 def paper_fallback_enabled() -> bool:
-    """Paper-live fills for pairs missing on Demo. Default on in hub_demo only."""
+    """Paper-live fills for pairs missing on Demo. Off unless PAPER_FALLBACK=1."""
     if _exec_mode() != "hub_demo":
         return False
-    return _env_bool("PAPER_FALLBACK", True)
+    return _env_bool("PAPER_FALLBACK", False)
+
+
+class NotOnDemoError(RuntimeError):
+    """Symbol is not in the Bitget Demo USDT-FUTURES catalog."""
 
 
 def is_missing_pair_error(exc: BaseException | str) -> bool:
@@ -145,6 +149,27 @@ def symbol_tradable_on_demo(symbol: str) -> bool | None:
     if not catalog:
         return None
     return bg in catalog
+
+
+def filter_to_demo_symbols(symbols: list[str]) -> list[str]:
+    """Keep scan symbols that exist on Demo. Empty catalog → scan none."""
+    try:
+        catalog = demo_tradable_symbols()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[DEMO-UNIVERSE] filter skipped: {exc}")
+        return []
+    if not catalog:
+        print("[DEMO-UNIVERSE] empty catalog; scan none until Demo instruments load")
+        return []
+    out: list[str] = []
+    for raw in symbols:
+        bg = ccxt_to_bitget_symbol(str(raw or "")).upper()
+        if bg and bg in catalog:
+            out.append(raw)
+    dropped = len(symbols) - len(out)
+    if dropped:
+        print(f"[DEMO-UNIVERSE] drop {dropped} not on Demo; keep {len(out)}")
+    return out
 
 
 def reset_demo_universe_cache_for_tests() -> None:

@@ -197,20 +197,33 @@ def process_symbol(
         return summary
 
 
+def _restrict_scan_to_demo(symbols: list[str]) -> list[str]:
+    """hub_demo scans only Bitget Demo instruments. Paper/live keep the public list."""
+    from exec.demo_universe import filter_to_demo_symbols
+    from exec.router import exec_mode
+
+    if exec_mode() != "hub_demo":
+        return list(symbols)
+    return filter_to_demo_symbols(list(symbols))
+
+
 def _active_symbols(
     cfg: LoopConfig,
     cache: UniverseCache | None,
 ) -> tuple[list[str], UniverseCache | None]:
     """Resolve symbols for this pass (auto refresh or fixed SYMBOLS)."""
+    snap = None
     if cfg.scan_mode != "auto":
-        return list(cfg.fixed_symbols or cfg.symbols), cache
-    if cache is None:
-        cache = UniverseCache()
-        set_shared_exchange(cache.exchange)
-    symbols, _mode, snap = resolve_scan_symbols(
-        cfg.fixed_symbols or cfg.symbols,
-        cache=cache,
-    )
+        symbols = list(cfg.fixed_symbols or cfg.symbols)
+    else:
+        if cache is None:
+            cache = UniverseCache()
+            set_shared_exchange(cache.exchange)
+        symbols, _mode, snap = resolve_scan_symbols(
+            cfg.fixed_symbols or cfg.symbols,
+            cache=cache,
+        )
+    symbols = _restrict_scan_to_demo(symbols)
     cfg.symbols = list(symbols)
     if snap is not None:
         print(
