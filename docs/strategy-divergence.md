@@ -19,7 +19,7 @@ Not swing-based 2R/3R targets. Stops and targets are **ATR** (`risk/atr.py`, `ri
 
 1. Market open on Demo (`hub_demo`) or paper-live fallback.
 2. Exchange strategy order: SL + TP2.
-3. Local TP1 → SL to breakeven + trailing; size stays open. The TP1 bar itself does not flatten at BE.
+3. Local TP1 → close 50% (`TP1_CLOSE_FRAC`), SL to breakeven + trailing on the runner. The TP1 bar itself does not flatten the remainder at BE.
 4. Close: TP2 (fill at TP2, not a retraced mark), trail, SL, `BE_HOURS` (`be_timeout`), dollar-stop, or time stop.
 
 ATR floor is `ATR_FLOOR_PCT` (default 0.5% of entry). A 2% floor made 15m TP1/TP2 unreachable on quiet names.

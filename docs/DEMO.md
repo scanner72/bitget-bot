@@ -24,7 +24,7 @@ cd C:\bitget-bot
 
 Говорите по пунктам (RU, можно вкраплениями EN):
 
-1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI/level-cross → decide (`rules` или `llm`, fallback на rules) → risk-gate → **Bitget Demo UTA** market open/close + paper shadow (TP1→BE/trail) → FastAPI dashboard.
+1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI/level-cross → decide (`rules` или `llm`, fallback на rules) → risk-gate → **Bitget Demo UTA** market open/close + paper shadow (TP1 50% + BE/trail на остатке) → FastAPI dashboard.
 2. **Трек:** Agent Trading / Divergent Agent Desk. **Live mainnet не в scope** — только Demo (`paptrading`); `BITGET_ALLOW_LIVE=0`.
 3. **Стек:** public WS candles (`MARKET_DATA_MODE=ws`) + REST bootstrap → `signals/` → `desk` loop → `agent.decide` → `risk.gate` → `exec.router` → `exec.bitget_hub` + `exec.paper` → `api` `:8080` (исполнение остаётся REST).
 4. **Риски:** risk-to-SL sizing (`RISK_USD_PER_TRADE`), exchange SL+TP2 при open, sync SL после TP1; daily loss kill / max positions / cooldown — env + `decisions.jsonl`.
@@ -88,4 +88,4 @@ cd C:\bitget-bot
 
 ## EN TL;DR (для описания ролика)
 
-Bitget S2 Divergent Agent Desk (Agent Trading): public OHLCV → signals → rules agent → risk gate → **Bitget Demo UTA** execution + paper shadow exits → FastAPI `:8080`. Exchange SL+TP2 on open; soft TP1/BE/trail local. Docker optional. Live mainnet blocked (`BITGET_ALLOW_LIVE=0`).
+Bitget S2 Divergent Agent Desk (Agent Trading): public OHLCV → signals → rules agent → risk gate → **Bitget Demo UTA** execution + paper shadow exits → FastAPI `:8080`. Exchange SL+TP2 on open; TP1 takes 50% locally, BE/trail on the remainder. Docker optional. Live mainnet blocked (`BITGET_ALLOW_LIVE=0`).

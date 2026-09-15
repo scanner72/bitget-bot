@@ -62,13 +62,16 @@ def main() -> int:
         _assert(low == 10.0, low)
 
         env = {"EXEC_MODE": "paper", "TICK_STOPS": "1"}
-        # TP1 tag (short: low <= 9.2) → BE update, still open
+        # TP1 tag (short: low <= 9.2) → take 50%, runner still open at BE
         bus.on_quote("ONDO/USDT:USDT", 9.15, 9.4, 9.1)
         with patch.dict(os.environ, env, clear=False):
             ev = apply_tick_quotes(bus, book=book, timeframe="15m")
-        _assert(any(e.get("action") == "update" for e in ev), ev)
-        pos = book.list_open()[0]
+        _assert(any(e.get("action") in {"partial_close", "update"} for e in ev), ev)
+        left = book.list_open()
+        _assert(len(left) == 1, left)
+        pos = left[0]
         _assert(bool(pos.get("tp1_hit") or (pos.get("meta") or {}).get("tp1_hit")), pos)
+        _assert(abs(float(pos.get("size_usd") or 0) - 50.0) < 1e-6, pos)
         sl_after = float(pos.get("sl") or 0)
         _assert(sl_after <= 10.0 + 1e-9, sl_after)
 

@@ -433,6 +433,33 @@ class RiskGate:
         self.save_state()
         return True
 
+    def record_reduce(
+        self,
+        symbol: str,
+        realized_pnl: float,
+        remaining_size_usd: float,
+        *,
+        meta: dict[str, Any] | None = None,
+        ts: datetime | None = None,
+    ) -> bool:
+        """Partial take: keep the open, shrink size, add realized PnL."""
+        del meta
+        self.state.roll_day_if_needed()
+        symbol = str(symbol)
+        idx = next(
+            (i for i, p in enumerate(self.state.open_positions) if p.symbol == symbol),
+            None,
+        )
+        if idx is None:
+            return False
+        pos = self.state.open_positions[idx]
+        pos.size_usd = max(0.0, float(remaining_size_usd))
+        self.state.daily_pnl += float(realized_pnl)
+        now = ts or _utc_now()
+        self.state.last_trade_ts[symbol] = now.isoformat()
+        self.save_state()
+        return True
+
 
 # Back-compat thin wrappers for the old stub API
 @dataclass

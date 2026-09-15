@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 from exec.account import PaperAccount
 from exec.paper import PaperBook, open_paper
 from risk.atr import ATR_FLOOR_PCT, levels_from_atr, resolve_atr_floor_pct
-from risk.exits import ExitConfig, apply_position_updates, evaluate_exit
+from risk.exits import ExitConfig, apply_exit_event, evaluate_exit
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -137,7 +137,7 @@ def main() -> int:
         _assert(closed_b.get("exit_status") == "tp2_hit", closed_b)
         _assert(closed_b["realized_pnl"] > 0, closed_b)
 
-        # --- Case C: TP1 -> BE update (no close) ---
+        # --- Case C: TP1 -> take 50%, runner stays at BE ---
         meta_c = dict(levels)
         meta_c["original_sl"] = levels["sl"]
         pid_c = open_paper(
@@ -160,18 +160,21 @@ def main() -> int:
                 max_hold_hours=999,
                 max_loss_pct_of_margin=0,
                 early_close_hours=0,
-                enable_trailing=False,  # isolate TP1 BE
+                enable_trailing=False,  # isolate TP1 take
+                tp1_close_frac=0.5,
             ),
         )
-        print(f"TP1 event: action={ev_tp1.action} status={ev_tp1.status} updates={ev_tp1.updates}")
-        _assert(ev_tp1.action == "update", ev_tp1)
-        _assert(ev_tp1.updates.get("tp1_hit") is True, ev_tp1.updates)
-        _assert(abs(float(ev_tp1.updates["sl"]) - entry) < 1e-9, ev_tp1.updates)
-        updated = apply_position_updates(pos_c, ev_tp1.updates)
-        book.update_position(pid_c, updated)
+        print(f"TP1 event: action={ev_tp1.action} status={ev_tp1.status} px={ev_tp1.close_price} frac={ev_tp1.fraction}")
+        _assert(ev_tp1.action == "partial_close", ev_tp1)
+        _assert(ev_tp1.status == "tp1_hit", ev_tp1)
+        _assert(abs(float(ev_tp1.close_price) - 103.0) < 1e-9 or float(ev_tp1.close_price) >= 103.0, ev_tp1)
+        applied_c = apply_exit_event(pos_c, ev_tp1, book=book, gate=None)
+        _assert(applied_c and applied_c.get("action") in {"partial_close", "close"}, applied_c)
+        _assert(float(applied_c.get("realized_pnl") or 0) > 0, applied_c)
         pos_c2 = next(p for p in book.list_open() if p["position_id"] == pid_c)
-        _assert(abs(float(pos_c2["sl"]) - entry) < 1e-9, pos_c2)
+        _assert(abs(float(pos_c2["size_usd"]) - 50.0) < 1e-9, pos_c2)
         _assert(pos_c2.get("tp1_hit") is True or pos_c2["meta"].get("tp1_hit") is True, pos_c2)
+        _assert(abs(float(pos_c2.get("sl") or pos_c2["meta"].get("sl")) - entry) < 1e-6, pos_c2)
 
         # --- Case D: P1 hard BE — after TP1, wide ATR trail must not push SL below entry ---
         from risk.exits import update_trailing_sl
@@ -219,9 +222,10 @@ def main() -> int:
             max_loss_pct_of_margin=0,
             early_close_hours=0,
             enable_trailing=True,
+            tp1_close_frac=0.5,
         )
 
-        # --- Case E: same bar tags TP1 and wicks back through entry — arm BE, do not flatten at 0
+        # --- Case E: same bar tags TP1 and wicks through entry — take 50% at TP1, runner stays
         meta_e = dict(levels)
         meta_e["original_sl"] = levels["sl"]
         pid_e = open_paper(
@@ -242,9 +246,12 @@ def main() -> int:
             cfg=cfg_iso,
         )
         print(f"Same-bar TP1+BE wick: action={ev_same.action} status={ev_same.status} px={ev_same.close_price}")
-        _assert(ev_same.action == "update", ev_same)
-        _assert(ev_same.updates.get("tp1_hit") is True, ev_same.updates)
-        _assert(ev_same.close_price is None, ev_same)
+        _assert(ev_same.action == "partial_close" and ev_same.status == "tp1_hit", ev_same)
+        _assert(float(ev_same.close_price) >= 103.0 - 1e-9, ev_same)
+        applied_e = apply_exit_event(pos_e, ev_same, book=book, gate=None)
+        _assert(float(applied_e.get("realized_pnl") or 0) > 0, applied_e)
+        pos_e2 = next(p for p in book.list_open() if p["position_id"] == pid_e)
+        _assert(abs(float(pos_e2["size_usd"]) - 50.0) < 1e-9, pos_e2)
 
         # --- Case F: BE_HOURS then SL at entry is be_timeout, not trailing_hit
         from datetime import timezone as _tz
@@ -309,7 +316,7 @@ def main() -> int:
         book.close_paper(pid_e, entry, meta={"exit_status": "smoke_cleanup"})
         book.close_paper(pid_g, float(ev_tp2_mark.close_price), meta={"exit_status": "tp2_hit"})
 
-        print("smoke_exits OK: sl_hit + tp2_hit + tp1_be + hard_be_p1 + same_bar_tp1 + be_timeout + tp2_fill")
+        print("smoke_exits OK: sl_hit + tp2_hit + tp1_partial + hard_be_p1 + same_bar_tp1 + be_timeout + tp2_fill")
         return 0
 
 
