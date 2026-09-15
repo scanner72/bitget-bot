@@ -15,7 +15,7 @@ Public Bitget OHLCV → RSI / level-cross → `agent.decide` (rules or llm) → 
 - `TF_BLOCKER_ENABLED=0`; pair blocker on
 - BTC: `BTC_REGIME_TF=1h`, EMA50 off — `.cursor/rules/btc-filters-policy.mdc`
 - `.env.example` `AGENT_MODE=rules`; running desk often `llm` (Groq `qwen/qwen3.6-27b`)
-- Leave exchange leverage at Bitget default
+- `HUB_LEVERAGE=20` on every hub open (`POST /api/v3/account/set-leverage`). Desk loop also bumps open 1x positions. `PAPER_LEVERAGE` stays 1 (size_usd is notional)
 
 ## Do not
 

@@ -76,7 +76,7 @@ cd C:\bitget-bot
 
 ## Чеклист перед Rec
 
-- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `HUB_SYNC_EXCHANGE_SL=1`
+- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `HUB_SYNC_EXCHANGE_SL=1`, `HUB_LEVERAGE=20`
 - [ ] Demo API keys заполнены (не на экране)
 - [ ] API на 8080
 - [ ] `docs/demo_artifacts/*.json` свежие

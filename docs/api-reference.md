@@ -40,7 +40,7 @@ Object, not a bare array (`exec/hub_view.py`):
 }
 ```
 
-`source` is `hub_demo`, `live`, or `paper`. Rows keep ccxt `symbol` plus `symbol_id` / `symbol_display`. Demo rows carry exchange entry/mark/PnL; paper-live rows are tagged as the fallback venue.
+`source` is `hub_demo`, `live`, or `paper`. Rows keep ccxt `symbol` plus `symbol_id` / `symbol_display`. Demo rows carry exchange entry/mark/PnL/`exchange_leverage`; paper-live rows are tagged as the fallback venue. Hub opens set `HUB_LEVERAGE` (default 20) via UTA `set-leverage` before the market order.
 
 ## `GET /decisions?limit=50`
 

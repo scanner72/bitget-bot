@@ -15,7 +15,7 @@
 
 | Слой | Этот стол |
 |------|-----------|
-| Исполнение | `hub_demo` — market + биржевые SL+TP2 на UTA Demo |
+| Исполнение | `hub_demo` — market **20×** (`HUB_LEVERAGE`) + биржевые SL+TP2 на UTA Demo |
 | Тень | Paper: ATR TP1 → стоп в безубыток + трейл |
 | Paper-live | `PAPER_FALLBACK=1` — нет пары на Demo → локальный fill; **этот PnL не складывать с Demo equity** |
 | ТФ | только `15m`, `TF_BLOCKER_ENABLED=0` |
