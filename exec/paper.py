@@ -364,7 +364,7 @@ class PaperBook:
         for k in (
             "sl", "tp1", "tp2", "atr", "atr_pct", "original_sl",
             "trailing_active", "trail_price", "tp1_hit", "tp1_hit_ts",
-            "be_timeout", "be_timeout_ts", "exit_status",
+            "be_timeout", "be_timeout_ts", "stale_no_tp1", "stale_no_tp1_ts", "exit_status",
         ):
             if k in pos and pos[k] is not None:
                 meta[k] = pos[k]
@@ -460,6 +460,129 @@ class PaperBook:
             "qty": qty,
             "realized_pnl": pnl,
             "exit_status": close_meta.get("exit_status"),
+            "remaining_size_usd": 0.0,
+        }
+
+    def reduce_paper(
+        self,
+        position_id_or_symbol: str,
+        price: float,
+        *,
+        fraction: float,
+        meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Close a fraction of the position; runner stays open. Full-close if leftover is dust."""
+        frac = float(fraction)
+        if frac <= 0:
+            raise ValueError("fraction must be > 0")
+        if frac >= 1.0:
+            return self.close_paper(position_id_or_symbol, price, meta=meta)
+
+        key = str(position_id_or_symbol).strip()
+        price = float(price)
+        if price <= 0:
+            raise ValueError("price must be > 0")
+
+        self._positions = _load_positions(self.positions_file)
+        idx = next(
+            (i for i, p in enumerate(self._positions) if p.get("position_id") == key),
+            None,
+        )
+        if idx is None:
+            idx = next(
+                (i for i, p in enumerate(self._positions) if p.get("symbol") == key),
+                None,
+            )
+        if idx is None:
+            raise KeyError(f"no open paper position for {key!r}")
+
+        pos = dict(self._positions[idx])
+        entry = float(pos.get("entry_price") or 0)
+        size_usd = float(pos.get("size_usd") or 0)
+        side = str(pos.get("side") or "long")
+        symbol = str(pos.get("symbol") or "")
+        qty = float(pos.get("qty") or _qty_from_size(size_usd, entry if entry else price))
+        close_usd = size_usd * frac
+        close_qty = qty * frac
+        remain_usd = size_usd - close_usd
+        remain_qty = qty - close_qty
+        min_left = 1.0
+        try:
+            min_left = max(1.0, float(os.getenv("MIN_NOTIONAL_USD") or "10"))
+        except ValueError:
+            min_left = 10.0
+        if remain_usd < min_left or remain_qty <= 0:
+            return self.close_paper(position_id_or_symbol, price, meta=meta)
+
+        pnl = _realize_pnl(side, entry, price, close_usd)
+        fill_id = _new_id("fill")
+        now = _utc_now()
+        iso = now.isoformat()
+        close_meta = dict(meta or {})
+        close_meta["partial"] = True
+        close_meta["remaining_size_usd"] = remain_usd
+
+        fill = {
+            "ts": iso,
+            "fill_id": fill_id,
+            "position_id": pos.get("position_id"),
+            "event": "close",
+            "symbol": symbol,
+            "side": side,
+            "size_usd": close_usd,
+            "qty": close_qty,
+            "price": price,
+            "entry_price": entry,
+            "realized_pnl": pnl,
+            "meta": close_meta,
+        }
+        _append_jsonl(self.fills_file, fill)
+
+        pos["size_usd"] = remain_usd
+        pos["qty"] = remain_qty
+        meta_pos = dict(pos.get("meta") or {})
+        meta_pos["size_usd"] = remain_usd
+        meta_pos["qty"] = remain_qty
+        meta_pos["tp1_partial"] = True
+        pos["meta"] = meta_pos
+        self._positions[idx] = pos
+        _save_positions(self._positions, self.positions_file)
+
+        acct = self.account or get_account()
+        acct.release_close(close_usd, pnl)
+
+        if self.gate is not None:
+            self.gate.record_reduce(
+                symbol,
+                realized_pnl=pnl,
+                remaining_size_usd=remain_usd,
+                meta={
+                    "position_id": pos.get("position_id"),
+                    "fill_id": fill_id,
+                    "price": price,
+                    **close_meta,
+                },
+                ts=now,
+            )
+
+        print(
+            f"[PAPER] REDUCE {pos.get('position_id')} {side} {symbol} @ {price} "
+            f"frac={frac} pnl={pnl:.4f} left={remain_usd:.4f} fill={fill_id}"
+        )
+        return {
+            "position_id": pos.get("position_id"),
+            "fill_id": fill_id,
+            "symbol": symbol,
+            "side": side,
+            "entry_price": entry,
+            "exit_price": price,
+            "size_usd": close_usd,
+            "qty": close_qty,
+            "realized_pnl": pnl,
+            "exit_status": close_meta.get("exit_status"),
+            "remaining_size_usd": remain_usd,
+            "remaining_qty": remain_qty,
+            "partial": True,
         }
 
 
@@ -504,6 +627,23 @@ def close_paper(
     if gate is not None and book is None:
         b.gate = gate
     return b.close_paper(position_id_or_symbol, price, meta=meta)
+
+
+def reduce_paper(
+    position_id_or_symbol: str,
+    price: float,
+    *,
+    fraction: float,
+    meta: dict[str, Any] | None = None,
+    gate: RiskGate | None = None,
+    book: PaperBook | None = None,
+) -> dict[str, Any]:
+    b = book or _book(gate)
+    if gate is not None and book is None:
+        b.gate = gate
+    return b.reduce_paper(
+        position_id_or_symbol, price, fraction=fraction, meta=meta
+    )
 
 
 def list_open(

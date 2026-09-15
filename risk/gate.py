@@ -55,11 +55,15 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _env_types(name: str = "ALLOWED_TYPES") -> set[str] | None:
+    """DIV + fade LEVEL_CROSS_DOWN (long). LEVEL_CROSS_UP is never gated in."""
+    default = {"BULLISH_DIV", "BEARISH_DIV", "LEVEL_CROSS_DOWN"}
+    blocked = {"LEVEL_CROSS_UP"}
     v = os.getenv(name)
     if v is None or str(v).strip() == "":
-        return None
+        return set(default)
     parts = [p.strip().upper() for p in str(v).split(",") if p.strip()]
-    return set(parts) if parts else None
+    allowed = {p for p in parts if p not in blocked}
+    return allowed if allowed else set(default)
 
 
 def _parse_ts(raw: Any) -> float | None:
@@ -427,6 +431,33 @@ class RiskGate:
         if idx is None:
             return False
         self.state.open_positions.pop(idx)
+        self.state.daily_pnl += float(realized_pnl)
+        now = ts or _utc_now()
+        self.state.last_trade_ts[symbol] = now.isoformat()
+        self.save_state()
+        return True
+
+    def record_reduce(
+        self,
+        symbol: str,
+        realized_pnl: float,
+        remaining_size_usd: float,
+        *,
+        meta: dict[str, Any] | None = None,
+        ts: datetime | None = None,
+    ) -> bool:
+        """Partial take: keep the open, shrink size, add realized PnL."""
+        del meta
+        self.state.roll_day_if_needed()
+        symbol = str(symbol)
+        idx = next(
+            (i for i, p in enumerate(self.state.open_positions) if p.symbol == symbol),
+            None,
+        )
+        if idx is None:
+            return False
+        pos = self.state.open_positions[idx]
+        pos.size_usd = max(0.0, float(remaining_size_usd))
         self.state.daily_pnl += float(realized_pnl)
         now = ts or _utc_now()
         self.state.last_trade_ts[symbol] = now.isoformat()

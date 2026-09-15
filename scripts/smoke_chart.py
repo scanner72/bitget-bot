@@ -115,10 +115,13 @@ def test_decision_agent_kind() -> None:
     llm = {"agent": {"rules_fired": ["llm"], "rationale": "RSI at 44.5 indicates weak momentum"}}
     fb = {"agent": {"rules_fired": ["llm_fallback", "enter"], "rationale": "long ENTER (llm_fallback: timeout)"}}
     rules = {"agent": {"rules_fired": ["bias_long", "enter"]}}
+    veto = {"agent": {"rules_fired": ["llm_veto", "bias_long", "enter"], "rationale": "crowded (llm_veto)"}}
     _assert(_decision_agent_kind(llm) == "llm", llm)
     _assert(_decision_agent_kind(fb) == "fallback", fb)
+    _assert(_decision_agent_kind(veto) == "veto", veto)
     _assert(_decision_agent_kind(rules) == "rules", rules)
     _assert("LLM" in _agent_kind_badge("llm"), "badge")
+    _assert("VETO" in _agent_kind_badge("veto"), "veto badge")
     _assert("FALLBACK" in _agent_kind_badge("fallback"), "badge")
     _assert("weak momentum" in _decision_rationale(llm), llm)
 

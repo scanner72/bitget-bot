@@ -18,8 +18,8 @@ if str(ROOT) not in sys.path:
 
 from exec.account import PaperAccount
 from exec.paper import PaperBook, open_paper
-from risk.atr import levels_from_atr
-from risk.exits import ExitConfig, apply_position_updates, evaluate_exit
+from risk.atr import ATR_FLOOR_PCT, levels_from_atr, resolve_atr_floor_pct
+from risk.exits import ExitConfig, apply_exit_event, evaluate_exit
 
 
 def _assert(cond: bool, msg: str) -> None:
@@ -53,6 +53,16 @@ def main() -> int:
             account=acct,
             gate=None,
         )
+
+        _assert(abs(ATR_FLOOR_PCT - 0.005) < 1e-12, ATR_FLOOR_PCT)
+        _assert(abs(resolve_atr_floor_pct(0.02) - 0.02) < 1e-12, "explicit floor")
+        # 2% floor put SUI TP1 past the 0.7475 wick; 0.5% floor does not.
+        sui_entry = 0.72904578
+        sui_high = 0.7475
+        lv_old = levels_from_atr(sui_entry, "long", sui_entry * 0.02)
+        lv_new = levels_from_atr(sui_entry, "long", sui_entry * 0.005)
+        _assert(sui_high < lv_old["tp1"], lv_old)
+        _assert(sui_high >= lv_new["tp2"], lv_new)
 
         entry = 100.0
         atr = 2.0  # explicit; levels: SL=98, TP1=103, TP2=105 long
@@ -127,7 +137,7 @@ def main() -> int:
         _assert(closed_b.get("exit_status") == "tp2_hit", closed_b)
         _assert(closed_b["realized_pnl"] > 0, closed_b)
 
-        # --- Case C: TP1 -> BE update (no close) ---
+        # --- Case C: TP1 -> take 50%, runner stays at BE ---
         meta_c = dict(levels)
         meta_c["original_sl"] = levels["sl"]
         pid_c = open_paper(
@@ -150,18 +160,21 @@ def main() -> int:
                 max_hold_hours=999,
                 max_loss_pct_of_margin=0,
                 early_close_hours=0,
-                enable_trailing=False,  # isolate TP1 BE
+                enable_trailing=False,  # isolate TP1 take
+                tp1_close_frac=0.5,
             ),
         )
-        print(f"TP1 event: action={ev_tp1.action} status={ev_tp1.status} updates={ev_tp1.updates}")
-        _assert(ev_tp1.action == "update", ev_tp1)
-        _assert(ev_tp1.updates.get("tp1_hit") is True, ev_tp1.updates)
-        _assert(abs(float(ev_tp1.updates["sl"]) - entry) < 1e-9, ev_tp1.updates)
-        updated = apply_position_updates(pos_c, ev_tp1.updates)
-        book.update_position(pid_c, updated)
+        print(f"TP1 event: action={ev_tp1.action} status={ev_tp1.status} px={ev_tp1.close_price} frac={ev_tp1.fraction}")
+        _assert(ev_tp1.action == "partial_close", ev_tp1)
+        _assert(ev_tp1.status == "tp1_hit", ev_tp1)
+        _assert(abs(float(ev_tp1.close_price) - 103.0) < 1e-9 or float(ev_tp1.close_price) >= 103.0, ev_tp1)
+        applied_c = apply_exit_event(pos_c, ev_tp1, book=book, gate=None)
+        _assert(applied_c and applied_c.get("action") in {"partial_close", "close"}, applied_c)
+        _assert(float(applied_c.get("realized_pnl") or 0) > 0, applied_c)
         pos_c2 = next(p for p in book.list_open() if p["position_id"] == pid_c)
-        _assert(abs(float(pos_c2["sl"]) - entry) < 1e-9, pos_c2)
+        _assert(abs(float(pos_c2["size_usd"]) - 50.0) < 1e-9, pos_c2)
         _assert(pos_c2.get("tp1_hit") is True or pos_c2["meta"].get("tp1_hit") is True, pos_c2)
+        _assert(abs(float(pos_c2.get("sl") or pos_c2["meta"].get("sl")) - entry) < 1e-6, pos_c2)
 
         # --- Case D: P1 hard BE — after TP1, wide ATR trail must not push SL below entry ---
         from risk.exits import update_trailing_sl
@@ -203,10 +216,133 @@ def main() -> int:
         print(f"Loss SL after tp1 flag: action={ev_bad.action} status={ev_bad.status}")
         _assert(ev_bad.action == "close" and ev_bad.status == "sl_hit", ev_bad)
 
+        cfg_iso = ExitConfig(
+            be_hours=999,
+            max_hold_hours=999,
+            max_loss_pct_of_margin=0,
+            early_close_hours=0,
+            enable_trailing=True,
+            tp1_close_frac=0.5,
+        )
+
+        # --- Case E: same bar tags TP1 and wicks through entry — take 50% at TP1, runner stays
+        meta_e = dict(levels)
+        meta_e["original_sl"] = levels["sl"]
+        pid_e = open_paper(
+            "TEST5/USDT:USDT",
+            "long",
+            100.0,
+            entry,
+            meta=meta_e,
+            book=book,
+        )
+        pos_e = next(p for p in book.list_open() if p["position_id"] == pid_e)
+        ev_same = evaluate_exit(
+            pos_e,
+            candle_high=103.2,
+            candle_low=99.5,
+            mark_price=100.2,
+            df=_df([(100, 103.2, 99.5, 100.2)] * 20),
+            cfg=cfg_iso,
+        )
+        print(f"Same-bar TP1+BE wick: action={ev_same.action} status={ev_same.status} px={ev_same.close_price}")
+        _assert(ev_same.action == "partial_close" and ev_same.status == "tp1_hit", ev_same)
+        _assert(float(ev_same.close_price) >= 103.0 - 1e-9, ev_same)
+        applied_e = apply_exit_event(pos_e, ev_same, book=book, gate=None)
+        _assert(float(applied_e.get("realized_pnl") or 0) > 0, applied_e)
+        pos_e2 = next(p for p in book.list_open() if p["position_id"] == pid_e)
+        _assert(abs(float(pos_e2["size_usd"]) - 50.0) < 1e-9, pos_e2)
+
+        # --- Case F: BE_HOURS without TP1 closes at mark (stale_no_tp1), not SL at entry
+        pos_f = {
+            "symbol": "TEST6/USDT:USDT",
+            "side": "long",
+            "entry_price": entry,
+            "sl": 98.0,
+            "tp1": 103.0,
+            "tp2": 105.0,
+            "original_sl": 98.0,
+            "opened_ts": "2026-01-01T00:00:00+00:00",
+            "meta": {"sl": 98.0, "original_sl": 98.0, "tp1": 103.0},
+        }
+        cfg_stale = ExitConfig(
+            be_hours=8,
+            max_hold_hours=999,
+            max_loss_pct_of_margin=0,
+            early_close_hours=0,
+            enable_trailing=True,
+        )
+        ev_early = evaluate_exit(
+            pos_f,
+            candle_high=101.0,
+            candle_low=99.0,
+            mark_price=99.5,
+            df=_df([(100, 101.0, 99.0, 99.5)] * 20),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 4, 0, tzinfo=timezone.utc),
+        )
+        print(f"BE early: action={ev_early.action} status={ev_early.status}")
+        _assert(ev_early.action != "close" or ev_early.status != "stale_no_tp1", ev_early)
+
+        ev_be = evaluate_exit(
+            pos_f,
+            candle_high=101.0,
+            candle_low=99.0,
+            mark_price=99.5,
+            df=_df([(100, 101.0, 99.0, 99.5)] * 20),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 8, 5, tzinfo=timezone.utc),
+        )
+        print(f"Stale no TP1: action={ev_be.action} status={ev_be.status} px={ev_be.close_price}")
+        _assert(ev_be.action == "close" and ev_be.status == "stale_no_tp1", ev_be)
+        _assert(abs(float(ev_be.close_price) - 99.5) < 1e-9, ev_be)
+
+        pos_f_tp1 = dict(pos_f)
+        pos_f_tp1["tp1_hit"] = True
+        pos_f_tp1["sl"] = entry
+        pos_f_tp1["meta"] = {**pos_f["meta"], "tp1_hit": True, "sl": entry}
+        ev_after_tp1 = evaluate_exit(
+            pos_f_tp1,
+            candle_high=101.0,
+            candle_low=100.2,
+            mark_price=100.5,
+            df=_df([(100, 101.0, 100.2, 100.5)] * 20),
+            cfg=cfg_stale,
+            now=datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc),
+        )
+        print(f"After TP1 9h: action={ev_after_tp1.action} status={ev_after_tp1.status}")
+        _assert(ev_after_tp1.status != "stale_no_tp1", ev_after_tp1)
+
+        # --- Case G: TP2 tagged but mark retraced — fill at TP2, not the dump
+        meta_g = dict(levels)
+        meta_g["original_sl"] = levels["sl"]
+        pid_g = open_paper(
+            "TEST7/USDT:USDT",
+            "long",
+            100.0,
+            entry,
+            meta=meta_g,
+            book=book,
+        )
+        pos_g = next(p for p in book.list_open() if p["position_id"] == pid_g)
+        ev_tp2_mark = evaluate_exit(
+            pos_g,
+            candle_high=105.5,
+            candle_low=104.0,
+            mark_price=101.0,  # retraced; must not print a fake tiny/negative TP
+            df=_df([(104, 105.5, 104.0, 101.0)] * 20),
+            cfg=cfg_iso,
+        )
+        print(f"TP2 retraced mark: action={ev_tp2_mark.action} status={ev_tp2_mark.status} px={ev_tp2_mark.close_price}")
+        _assert(ev_tp2_mark.action == "close" and ev_tp2_mark.status == "tp2_hit", ev_tp2_mark)
+        _assert(abs(float(ev_tp2_mark.close_price) - 105.0) < 1e-9, ev_tp2_mark)
+
         # cleanup remaining
         book.close_paper(pid_c, entry, meta={"exit_status": "smoke_cleanup"})
+        book.close_paper(pid_e, entry, meta={"exit_status": "smoke_cleanup"})
+        book.close_paper(pid_g, float(ev_tp2_mark.close_price), meta={"exit_status": "tp2_hit"})
 
-        print("smoke_exits OK: sl_hit + tp2_hit + tp1_be + hard_be_p1")
+        print("smoke_exits OK: sl_hit + tp2_hit + tp1_partial + hard_be_p1 + same_bar_tp1 + stale_no_tp1 + tp2_fill")
         return 0
 
 

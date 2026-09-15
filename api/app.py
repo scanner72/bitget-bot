@@ -67,7 +67,7 @@ def _exit_fields(pos: dict[str, Any]) -> dict[str, Any]:
     for key in (
         "sl", "tp1", "tp2", "atr", "atr_pct", "original_sl",
         "tp1_hit", "trailing_active", "trail_price",
-        "be_timeout", "exit_status",
+        "be_timeout", "stale_no_tp1", "exit_status",
     ):
         val = pick(key)
         if val is not None:
@@ -524,6 +524,8 @@ def _decision_rules(d: dict[str, Any]) -> list[str]:
 
 def _decision_agent_kind(d: dict[str, Any]) -> str:
     rf = _decision_rules(d)
+    if "llm_veto" in rf:
+        return "veto"
     if "llm_fallback" in rf:
         return "fallback"
     if "llm" in rf:
@@ -543,9 +545,11 @@ def _decision_rationale(d: dict[str, Any], *, limit: int = 160) -> str:
 def _agent_kind_badge(kind: str) -> str:
     k = str(kind or "rules")
     if k == "llm":
-        return '<span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span>'
+        return '<span class="tag llm" title="LLM confirmed a rules ENTER">LLM</span>'
+    if k == "veto":
+        return '<span class="tag veto" title="LLM vetoed a rules ENTER">VETO</span>'
     if k == "fallback":
-        return '<span class="tag warn" title="LLM failed; rules took over">FALLBACK</span>'
+        return '<span class="tag warn" title="LLM failed; rules ENTER kept">FALLBACK</span>'
     return '<span class="tag" title="Deterministic rules">RULES</span>'
 
 
@@ -816,7 +820,7 @@ def desk_live_state() -> dict[str, Any]:
     dec_n = len(decs)
     agent_mode = _agent_mode_name()
     agent_model = _agent_model_name()
-    kind_counts = {"llm": 0, "fallback": 0, "rules": 0}
+    kind_counts = {"llm": 0, "fallback": 0, "rules": 0, "veto": 0}
     for row in decs:
         k = _decision_agent_kind(row)
         kind_counts[k] = kind_counts.get(k, 0) + 1
@@ -857,14 +861,17 @@ def desk_live_state() -> dict[str, Any]:
         f"max_daily_loss_usd={_html_escape(risk.get('max_daily_loss_usd'))}<br/>"
         f"date={_html_escape(risk.get('daily_date') or '-')}"
     )
-    if agent_mode == "llm" and kind_counts["llm"] and not kind_counts["fallback"]:
-        agent_hint = "LLM answering (rules_fired includes llm)"
+    if agent_mode == "llm" and kind_counts["veto"]:
+        agent_hint = "LLM vetoing some rules ENTERs"
+        agent_hint_class = "risk-ok"
+    elif agent_mode == "llm" and kind_counts["llm"] and not kind_counts["fallback"]:
+        agent_hint = "LLM confirming rules ENTERs"
         agent_hint_class = "risk-ok"
     elif agent_mode == "llm" and kind_counts["fallback"]:
-        agent_hint = "LLM errors → rules fallback"
+        agent_hint = "LLM errors → keep rules ENTER"
         agent_hint_class = "risk-bad"
     elif agent_mode == "llm":
-        agent_hint = "LLM on — waiting for the next candidate"
+        agent_hint = "LLM veto on — waiting for the next candidate"
         agent_hint_class = "risk-ok"
     else:
         agent_hint = "Rules path (AGENT_MODE=rules)"
@@ -872,7 +879,7 @@ def desk_live_state() -> dict[str, Any]:
     agent_meta = (
         f"mode={_html_escape(agent_mode)}<br/>"
         f"model={_html_escape(agent_model or '—')}<br/>"
-        f"last {dec_n}: llm={kind_counts['llm']} "
+        f"last {dec_n}: llm={kind_counts['llm']} veto={kind_counts['veto']} "
         f"fallback={kind_counts['fallback']} rules={kind_counts['rules']}"
     )
     return {
@@ -1029,6 +1036,7 @@ def dashboard() -> str:
     .tag.ok {{ color:#c4f1dc; border-color:#2c6f56; background:#123528; }}
     .tag.bad {{ color:#f3c4c4; border-color:#7a3535; background:#311919; }}
     .tag.llm {{ color:#cfe4ff; border-color:#245ea8; background:#13315a; }}
+    .tag.veto {{ color:#f8e5be; border-color:#73501f; background:#2b2112; }}
     .footer {{ color:var(--muted); font-size:.78rem; margin-top:10px; }}
     .hint {{ color:var(--muted); font-size:.74rem; margin:0 0 10px; }}
     a {{ color:#6daefc; text-decoration:none; }}

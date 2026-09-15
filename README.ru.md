@@ -7,7 +7,7 @@
 
 **[English](README.md)** · **[Русский](README.ru.md)** · [Архитектура](docs/architecture.md) · [Риск](docs/risk-engine.md) · [API](docs/api-reference.md) · [Видео](docs/DEMO.md) · [Подача](docs/SUBMISSION.md) · [Лог сделок](docs/evidence/paper_trading_log.csv)
 
-Хакатон Bitget AI **S2**, трек **Agentic Trading**. Публичный OHLCV Bitget → сигналы RSI / level-cross → rules или LLM → риск-гейт → **Bitget UTA Demo** (`hub_demo`) + локальный paper shadow → дашборд FastAPI на `:8080`.
+Хакатон Bitget AI **S2**, трек **Agentic Trading**. Публичный OHLCV Bitget → сигналы RSI-дивергенции → rules (опционально LLM-veto) → риск-гейт → **Bitget UTA Demo** (`hub_demo`) + локальный paper shadow → дашборд FastAPI на `:8080`.
 
 **Не live mainnet.** `BITGET_ALLOW_LIVE=0`. Дедлайн **21 Sep 2026 24:00 UTC+8**. Форма: [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) — только после GitHub + paper log + видео + поста в X.
 
@@ -16,10 +16,10 @@
 | Слой | Этот стол |
 |------|-----------|
 | Исполнение | `hub_demo` — market + биржевые SL+TP2 на UTA Demo |
-| Тень | Paper: ATR TP1 → стоп в безубыток + трейл |
+| Тень | Paper: ATR TP1 закрывает 50%, остаток — стоп в безубыток + трейл |
 | Paper-live | `PAPER_FALLBACK=1` — нет пары на Demo → локальный fill; **этот PnL не складывать с Demo equity** |
 | ТФ | только `15m`, `TF_BLOCKER_ENABLED=0` |
-| Агент | в `.env.example` — `rules`; живой стол — `llm` (Groq), при ошибке откат на rules |
+| Агент | в `.env.example` — `rules`; `llm` = сначала rules, модель может только SKIP. Сбой LLM оставляет ENTER |
 
 ```bash
 cp .env.example .env

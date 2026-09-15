@@ -18,7 +18,7 @@ Base: `http://127.0.0.1:8080`. HTML on `/` and `/chart`; everything else JSON. H
 }
 ```
 
-`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK` is on **and** `exec_mode` is `hub_demo`. `agent_mode` is `rules` or `llm`. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
+`paper` is always true (shadow book). `paper_fallback` is true only when `PAPER_FALLBACK` is on **and** `exec_mode` is `hub_demo`. `agent_mode` is `rules` or `llm`. When `llm`, rules run first and the model may only SKIP. `openai_model` is the Chat Completions model when `llm`, else `""`. No API key is returned.
 
 ## `GET /account` and `GET /equity`
 

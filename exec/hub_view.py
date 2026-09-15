@@ -115,6 +115,7 @@ def _paper_live_row(paper: dict[str, Any]) -> dict[str, Any]:
             "timeframe": meta.get("timeframe") or row.get("timeframe"),
             "tp1_hit": row.get("tp1_hit") or meta.get("tp1_hit"),
             "be_timeout": row.get("be_timeout") or meta.get("be_timeout"),
+            "stale_no_tp1": row.get("stale_no_tp1") or meta.get("stale_no_tp1"),
             "exec_reason": meta.get("exec_reason"),
             "fill_source": meta.get("fill_source"),
         }
@@ -234,6 +235,7 @@ def list_positions_for_ui() -> dict[str, Any]:
             "timeframe": meta.get("timeframe") or paper.get("timeframe"),
             "tp1_hit": paper.get("tp1_hit") or meta.get("tp1_hit"),
             "be_timeout": paper.get("be_timeout") or meta.get("be_timeout"),
+            "stale_no_tp1": paper.get("stale_no_tp1") or meta.get("stale_no_tp1"),
             "stale": False,
         }
         if not tpsl_on:

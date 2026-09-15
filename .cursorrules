@@ -14,7 +14,7 @@ Python 3.11+, FastAPI, CCXT, public Bitget OHLCV, Demo UTA execution (`hub_demo`
 
 ## Layout
 
-`ingest/` candles · `signals/` RSI div + level-cross · `desk/` loop · `agent/decide.py` · `risk/` · `exec/` router+hub+paper · `api/app.py` `:8080`.
+`ingest/` candles · `signals/` RSI div + level-cross · `desk/` loop · `agent/decide.py` (rules + optional LLM veto) · `risk/` · `exec/` router+hub+paper · `api/app.py` `:8080`.
 
 ## Commands
 

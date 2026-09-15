@@ -8,7 +8,7 @@ import os
 import time
 from typing import Any
 
-from exec.paper import PaperBook, close_paper, open_paper
+from exec.paper import PaperBook, close_paper, open_paper, reduce_paper
 from exec.demo_universe import (
     drop_demo_symbol,
     is_missing_pair_error,
@@ -100,7 +100,7 @@ def _recompute_levels_for_entry(
     side: str,
 ) -> dict[str, float]:
     """Rebuild SL/TP1/TP2 from ATR using the real fill entry."""
-    from risk.atr import levels_from_atr
+    from risk.atr import levels_from_atr, resolve_atr_floor_pct
 
     atr = _safe_float(meta.get("atr"), None)
     if atr is None or atr <= 0:
@@ -111,7 +111,7 @@ def _recompute_levels_for_entry(
         if old_entry and old_entry > 0 and old_sl is not None:
             atr = abs(old_sl - old_entry)
         else:
-            atr = entry * 0.02
+            atr = entry * resolve_atr_floor_pct()
     levels = levels_from_atr(entry, side, float(atr))
     return {
         "atr": float(levels["atr"]),
@@ -472,6 +472,23 @@ def open_position(
     )
 
 
+def _scale_qty(qty: Any, fraction: float) -> str:
+    """Half (or frac) of an exchange qty string without rounding to zero."""
+    s = str(qty).strip()
+    q = float(s)
+    scaled = q * float(fraction)
+    if "." in s:
+        dec = max(4, len(s.split(".", 1)[1]))
+    else:
+        dec = 8
+    factor = 10 ** dec
+    scaled = int(scaled * factor) / factor
+    if scaled <= 0:
+        raise ValueError("scaled qty is 0")
+    out = f"{scaled:.{dec}f}".rstrip("0").rstrip(".")
+    return out or "0"
+
+
 def close_position(
     position_id_or_symbol: str,
     price: float,
@@ -479,12 +496,22 @@ def close_position(
     meta: dict[str, Any] | None = None,
     gate: Any | None = None,
     book: PaperBook | None = None,
+    fraction: float | None = None,
 ) -> dict[str, Any]:
-    """Close paper shadow; if hub_demo/live also reduce-only on Bitget."""
+    """Close paper shadow; if hub_demo/live also reduce-only on Bitget.
+
+    ``fraction`` in (0, 1) takes that share (TP1 50%) and leaves the runner.
+    """
     mode = exec_mode()
     b = book or PaperBook(gate=gate)
     if gate is not None and b.gate is None:
         b.gate = gate
+
+    frac: float | None = None
+    if fraction is not None:
+        f = float(fraction)
+        if 0 < f < 1:
+            frac = f
 
     opens = b.list_open()
     key = str(position_id_or_symbol).strip()
@@ -527,6 +554,11 @@ def close_position(
             size_usd = float(pos.get("size_usd") or 0)
             entry = float(pos.get("entry_price") or price)
             qty = _qty_from_size(size_usd, entry if entry > 0 else price)
+        if frac is not None:
+            try:
+                qty = _scale_qty(qty, frac)
+            except ValueError:
+                qty = str(qty)
         try:
             closed = client.close_perp_market(str(pos.get("symbol")), side, qty)
             hub_meta = {
@@ -546,6 +578,15 @@ def close_position(
     close_meta.setdefault("exec_mode", mode)
     if pos is not None and is_paper_venue(pos):
         close_meta.setdefault("exec_venue", "paper")
+    if frac is not None:
+        return reduce_paper(
+            position_id_or_symbol,
+            price,
+            fraction=frac,
+            meta=close_meta,
+            gate=gate,
+            book=b,
+        )
     return close_paper(
         position_id_or_symbol,
         price,

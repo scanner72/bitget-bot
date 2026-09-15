@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping
 
 import pandas as pd
 
 # Donor defaults
 ATR_PERIOD = 14
-ATR_FLOOR_PCT = 0.02  # max(atr, entry * 0.02)
+# 2% floor pushed 15m TP1/TP2 so far that quiet names (SUI 2026-09-15)
+# never tagged TP, then BE_HOURS closed at entry with 0 PnL.
+ATR_FLOOR_PCT = 0.005  # max(atr, entry * floor); override ATR_FLOOR_PCT
 SL_ATR_MULT = 1.0
 TP1_ATR_MULT = 1.5
 TP2_ATR_MULT = 2.5
@@ -16,17 +19,34 @@ ATR_PCT_MIN = 0.3  # percent
 ATR_PCT_MAX = 6.0  # percent
 
 
+def resolve_atr_floor_pct(floor_pct: float | None = None) -> float:
+    """ATR floor as a fraction of entry. Env ATR_FLOOR_PCT wins when floor_pct is None."""
+    if floor_pct is not None:
+        try:
+            return max(0.0, float(floor_pct))
+        except (TypeError, ValueError):
+            return float(ATR_FLOOR_PCT)
+    raw = os.getenv("ATR_FLOOR_PCT")
+    if raw is None or str(raw).strip() == "":
+        return float(ATR_FLOOR_PCT)
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return float(ATR_FLOOR_PCT)
+
+
 def compute_atr(
     df: pd.DataFrame | None,
     *,
     period: int = ATR_PERIOD,
     entry: float | None = None,
-    floor_pct: float = ATR_FLOOR_PCT,
+    floor_pct: float | None = None,
 ) -> float | None:
     """Mean(high-low).tail(period); optionally floor to entry*floor_pct.
 
     Returns None if df is insufficient. Matches divergent stream_manager.
     """
+    floor = resolve_atr_floor_pct(floor_pct)
     if df is None or len(df) < 1:
         return None
     if "high" not in df.columns or "low" not in df.columns:
@@ -37,8 +57,8 @@ def compute_atr(
         return None
     if atr != atr or atr <= 0:  # NaN / non-positive
         atr = 0.0
-    if entry is not None and entry > 0 and floor_pct > 0:
-        atr = max(atr, float(entry) * float(floor_pct))
+    if entry is not None and entry > 0 and floor > 0:
+        atr = max(atr, float(entry) * floor)
     elif atr <= 0:
         return None
     return atr
@@ -105,7 +125,7 @@ def compute_levels_from_df(
     df: pd.DataFrame | None,
     *,
     period: int = ATR_PERIOD,
-    floor_pct: float = ATR_FLOOR_PCT,
+    floor_pct: float | None = None,
     sl_mult: float = SL_ATR_MULT,
     tp1_mult: float = TP1_ATR_MULT,
     tp2_mult: float = TP2_ATR_MULT,

@@ -1,6 +1,8 @@
-"""Agent decide: rules-first, optional OpenAI-compatible LLM with rules fallback.
+"""Agent decide: rules-first, optional LLM veto.
 
 Paper-only policy. AGENT_MODE=rules|llm (default rules).
+When llm: rules run first. LLM may only SKIP a rules ENTER. It cannot
+ENTER a rules SKIP. LLM errors keep the rules ENTER (`llm_fallback`).
 """
 
 from __future__ import annotations
@@ -153,6 +155,17 @@ def decide_rules(
     overbought, oversold = _rsi_thresholds()
     rules.append(f"type:{t}")
 
+    # v1 analytics 2026-09-15: CROSS_UP long WR 12.7% / −$5.5k. Never trade UP.
+    if t == "LEVEL_CROSS_UP":
+        rules.append("cross_up_disabled")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": None,
+            "rationale": "LEVEL_CROSS_UP disabled (v1 leak)",
+            "rules_fired": rules,
+        }
+
     side: str | None = None
     if t in LONG_TYPES:
         side = "long"
@@ -190,9 +203,15 @@ def decide_rules(
             "rules_fired": rules,
         }
 
-    # v1: longs only in RSI zone (pairs.rsi_long_max default 30)
+    # v1: DIV longs only in RSI zone (pairs.rsi_long_max default 30).
+    # Fade CROSS_DOWN is a breakdown long — do not require RSI≤30.
     rsi_long_max = _env_float("RSI_LONG_MAX", 30.0)
-    if side == "long" and rsi_long_max > 0 and rsi > rsi_long_max:
+    if (
+        side == "long"
+        and t != "LEVEL_CROSS_DOWN"
+        and rsi_long_max > 0
+        and rsi > rsi_long_max
+    ):
         rules.append("rsi_long_zone")
         return {
             "action": "SKIP",
@@ -310,6 +329,7 @@ def _validate_llm_decision(obj: dict[str, Any]) -> dict[str, Any]:
 def _llm_chat_completions(
     candidate: dict[str, Any] | None,
     context: dict[str, Any] | None,
+    rules_decision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call OpenAI-compatible Chat Completions; return validated decision."""
     base = _env_str("OPENAI_BASE_URL", "http://127.0.0.1:8787/v1").rstrip("/")
@@ -323,16 +343,20 @@ def _llm_chat_completions(
     user_payload = {
         "candidate": candidate,
         "risk_context": risk_summary,
+        "rules_decision": rules_decision or {},
         "instructions": (
             "Return ONLY a JSON object with keys: "
             "action (ENTER|SKIP|REDUCE), size_usd (number), "
             "side (long|short|null), rationale (string). "
+            "Rules already said ENTER. SKIP or REDUCE = veto (do not trade). "
+            "ENTER = confirm. Do not change side. size_usd is ignored. "
             "Paper trading only; be conservative."
         ),
     }
     system = (
-        "You are a paper-trading decision agent. "
-        "Given a signal candidate and risk context, choose ENTER, SKIP, or REDUCE. "
+        "You are a paper-trading veto agent. "
+        "Deterministic rules already approved this candidate. "
+        "You may SKIP (veto) or ENTER (confirm). You cannot originate a trade. "
         "Respond with a single JSON object only. No markdown, no thinking, no extra text. "
         "The first character of the reply must be '{'."
     )
@@ -435,6 +459,17 @@ def _llm_chat_completions(
     return _validate_llm_decision(parsed)
 
 
+def _attach_llm_fallback(rules_out: dict[str, Any], err: str) -> dict[str, Any]:
+    rules = list(rules_out.get("rules_fired") or [])
+    if "llm_fallback" not in rules:
+        rules.insert(0, "llm_fallback")
+    return {
+        **rules_out,
+        "rules_fired": rules,
+        "rationale": f"{rules_out.get('rationale')} (llm_fallback: {err})",
+    }
+
+
 def decide(
     candidate: dict[str, Any] | None,
     context: dict[str, Any] | None = None,
@@ -442,8 +477,9 @@ def decide(
     """Decide ENTER | SKIP | REDUCE.
 
     AGENT_MODE=rules (default): pure rules path.
-    AGENT_MODE=llm: OpenAI-compatible Chat Completions; on any failure/timeout
-    fall back to rules and set rules_fired including llm_fallback.
+    AGENT_MODE=llm: rules first. LLM is called only on rules ENTER and may
+    SKIP (veto). It cannot ENTER a rules SKIP. On LLM failure/timeout keep
+    the rules ENTER and set rules_fired including llm_fallback.
 
     Returns:
         {
@@ -454,22 +490,37 @@ def decide(
           "rules_fired": list[str],
         }
     """
-    mode = _agent_mode()
-    if mode != "llm":
-        return decide_rules(candidate, context)
+    rules_out = decide_rules(candidate, context)
+    if _agent_mode() != "llm":
+        return rules_out
+
+    if str(rules_out.get("action", "SKIP")).upper() != "ENTER":
+        return rules_out
 
     try:
-        return _llm_chat_completions(candidate, context)
-    except Exception as exc:  # noqa: BLE001 - any failure -> rules
+        llm_out = _llm_chat_completions(candidate, context, rules_out)
+    except Exception as exc:  # noqa: BLE001 - any failure -> keep rules ENTER
         err = f"{type(exc).__name__}: {exc}"
-        out = decide_rules(candidate, context)
-        rules = list(out.get("rules_fired") or [])
-        if "llm_fallback" not in rules:
-            rules.insert(0, "llm_fallback")
-        out = {
-            **out,
+        return _attach_llm_fallback(rules_out, err)
+
+    llm_action = str(llm_out.get("action", "")).upper()
+    rules = list(rules_out.get("rules_fired") or [])
+    if llm_action in {"SKIP", "REDUCE"}:
+        if "llm_veto" not in rules:
+            rules.insert(0, "llm_veto")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": rules_out.get("side"),
+            "rationale": f"{llm_out.get('rationale') or 'llm veto'} (llm_veto)",
             "rules_fired": rules,
-            "rationale": f"{out.get('rationale')} (llm_fallback: {err})",
         }
-        return out
+
+    if "llm" not in rules:
+        rules.insert(0, "llm")
+    rationale = str(rules_out.get("rationale") or "")
+    extra = str(llm_out.get("rationale") or "").strip()
+    if extra:
+        rationale = f"{rationale} | llm: {extra}"
+    return {**rules_out, "rules_fired": rules, "rationale": rationale}
 

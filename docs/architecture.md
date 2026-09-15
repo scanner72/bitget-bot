@@ -24,7 +24,7 @@ flowchart LR
 | `ingest/universe.py` | Auto-scan USDT-M swaps only: crypto + rToken/RWA (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`). |
 | `signals/engine.py`, `signals/divergence/` | Wilder RSI 14, swing pivots, `BULLISH_DIV` / `BEARISH_DIV` / `LEVEL_CROSS_*`. |
 | `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. |
-| `agent/decide.py` | `AGENT_MODE=rules` or `llm` (OpenAI-compatible). LLM errors → rules + `llm_fallback`. |
+| `agent/decide.py` | `AGENT_MODE=rules` or `llm` (OpenAI-compatible). `llm` = rules first, model may only SKIP. LLM errors keep rules ENTER (`llm_fallback`). |
 | `risk/gate.py`, `sizing.py`, `exits.py`, `atr.py` | Limits, risk-to-SL notional, ATR SL/TP1/TP2, pair blocker. |
 | `exec/router.py`, `bitget_hub.py`, `paper.py` | `hub_demo` / `paper` / `live` (live needs `BITGET_ALLOW_LIVE=1`). |
 | `api/app.py` | Dashboard and JSON on port **8080**. |

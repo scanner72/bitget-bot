@@ -7,7 +7,7 @@
 
 **[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md) · [Evidence log](docs/evidence/paper_trading_log.csv)
 
-Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI / level-cross signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
+Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI divergence signals → rules (optional LLM veto) → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
 
 **Not live mainnet.** `BITGET_ALLOW_LIVE=0`. Deadline **21 Sep 2026 24:00 UTC+8**. Form: [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) — submit only after GitHub + paper log + video + X post exist.
 
@@ -18,12 +18,12 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 | Piece | This desk |
 |-------|-----------|
 | Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close, exchange SL+TP2 |
-| Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
+| Shadow | Local paper book: ATR TP1 takes 50%, remainder SL to breakeven + trail; UI / fills |
 | Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
 | Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
 | TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
-| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
-| Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
+| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (`LEVEL_CROSS_UP` off) |
+| Agent | `.env.example` default `AGENT_MODE=rules`. `llm` = rules first; model may only SKIP a rules ENTER. LLM failure keeps that ENTER |
 | BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
 
 Public candles need no keys. **Demo orders need Bitget Demo API keys in local `.env` (never commit).**
@@ -59,7 +59,7 @@ flowchart LR
 
 Sizing: `notional = clamp(RISK / (|entry-sl|/entry), MIN, MAX)`. If those env vars are missing, code falls back to risk `2` / max `100` — this repo’s example file is the intended desk.
 
-ATR levels on open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry×0.02)`; long SL=`entry-1×ATR`, TP1=`+1.5×ATR`, TP2=`+2.5×ATR` (short mirrored). Skip if `atr_pct` &lt; 0.3% or &gt; 6%.
+ATR levels on open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry×ATR_FLOOR_PCT)` (default 0.5%); long SL=`entry-1×ATR`, TP1=`+1.5×ATR`, TP2=`+2.5×ATR` (short mirrored). Skip if `atr_pct` &lt; 0.3% or &gt; 6%.
 
 ---
 

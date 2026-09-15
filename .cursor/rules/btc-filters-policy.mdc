@@ -12,8 +12,8 @@ alwaysApply: true
 
 ## Applied on bitget (aligned to v1, 2026-09-11)
 - Both sides: `ALLOW_LONG=1`, `ALLOW_SHORT=1`
-- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN`
-- `RSI_LONG_MAX=30` (v1 `pairs.rsi_long_max`)
+- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (UP off 2026-09-15; DOWN restored as fade long from v1 analytics). Pair blocker on.
+- `RSI_LONG_MAX=30` (v1 `pairs.rsi_long_max`) on **DIV longs only**. Fade `LEVEL_CROSS_DOWN` skips that zone filter.
 - Full symmetric regime: bearish blocks long, bullish blocks short
 - `BTC_REGIME_TF=1h` (user standard; live DB still had 4h)
 - `BTC_REGIME_ENABLED=1`
@@ -29,6 +29,16 @@ alwaysApply: true
 2. Do not copy v1 `max_open_positions=60` unless the user asks — Bitget Demo + $500 notionals stay at 15.
 3. Soft alternatives if dead zones wipe the book: size-down instead of hard ban; or require both regime+EMA50 before blocking.
 4. Do not let timeframe blocker ban the only TF (`15m`). If paper TF PnL is near zero, leave the book open.
+5. `LEVEL_CROSS_UP` stays off (v1 leak WR 12.7% / −$5.5k). `LEVEL_CROSS_DOWN` is fade long only (v1 best setup). Do not flip DOWN to short or restore UP.
+
+## Desk freeze (user 2026-09-15 → S2 deadline 21 Sep)
+- Quality over fill-count. No new hard bans (do not re-enable TF blocker).
+- Keep rToken/RWA in the scanner (`SCAN_RTOKEN_TOP=30`).
+- Paper-live is part of the strategy (`PAPER_FALLBACK=1`); still a separate book from Demo equity.
+- `AGENT_MODE=llm` is **veto only** (rules ENTER, model may SKIP). LLM cannot originate a trade.
+- Capital **$10k**: keep `RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15`, `MAX_DAILY_LOSS_USD=50`. Do not copy v1 60 positions.
+- `BE_HOURS` without TP1 → close at mark (`stale_no_tp1`), not a fake fill at entry.
+- `LEVEL_CROSS_DOWN` fade long is on; `LEVEL_CROSS_UP` stays off.
 
 ## Note
 Live divergent DB on 2026-09-11 still had `btc_regime_tf=4h`; bitget follows user choice **1h** as the intended standard.

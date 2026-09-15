@@ -179,6 +179,8 @@ def _load_closed_trades(fills_path: Path, default_tf: str) -> list[dict[str, Any
         if ts is None:
             continue
         meta = o.get("meta") if isinstance(o.get("meta"), dict) else {}
+        if bool(meta.get("partial")):
+            continue
         tf = str(meta.get("timeframe") or o.get("timeframe") or default_tf).strip() or default_tf
         rows.append({"symbol": sym, "pnl": pnl, "ts": ts, "timeframe": tf})
     rows.sort(key=lambda r: r["ts"])

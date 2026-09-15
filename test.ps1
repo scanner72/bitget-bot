@@ -25,7 +25,8 @@ $smokes = @(
     "scripts/smoke_paper_fallback.py",
     "scripts/smoke_reconcile.py",
     "scripts/smoke_chart.py",
-    "scripts/smoke_export_paper_log.py"
+    "scripts/smoke_export_paper_log.py",
+    "scripts/smoke_replay_tp1_fix.py"
 )
 
 Write-Host "Smokes via $py"

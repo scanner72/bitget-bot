@@ -13,7 +13,7 @@ Code: `risk/gate.py`, `risk/sizing.py`, `risk/exits.py`, `risk/atr.py`. Values b
 | Max open positions | `MAX_POSITIONS` | `15` |
 | One position per symbol | `ONE_POSITION_PER_SYMBOL` | true |
 | Re-entry cooldown | `COOLDOWN_SEC` | `900` |
-| Signal types | `ALLOWED_TYPES` | `BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
+| Signal types | `ALLOWED_TYPES` | `BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (`LEVEL_CROSS_UP` stripped) |
 | Longs only if RSI ≤ | `RSI_LONG_MAX` | `30` |
 | RSI skip extremes | `RSI_OVERBOUGHT` / `RSI_OVERSOLD` | `70` / `30` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
@@ -33,12 +33,13 @@ Example: entry 60 000, SL 1% away, risk `$10` → raw `$1000` → cap `$500`.
 
 ## ATR exits (paper shadow + exchange parachute)
 
-On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * 0.02)`.
+On open: `ATR = mean(high-low).tail(14)`, floor `max(atr, entry * ATR_FLOOR_PCT)` (default **0.5%**, env `ATR_FLOOR_PCT`). A 2% floor pushed 15m TP1/TP2 so far that quiet names never tagged TP, then `BE_HOURS` used to flatten at entry (0 PnL).
 
 - Long: SL = entry − 1×ATR, TP1 = +1.5×ATR, TP2 = +2.5×ATR (short mirrored).
 - Skip open if `atr_pct` &lt; 0.3% or &gt; 6%.
 - Exchange gets **SL + TP2** on open (`HUB_SYNC_EXCHANGE_SL=1` also pushes SL after BE/trail).
-- **TP1** does not flatten 50%. It marks `tp1_hit`, moves SL to breakeven, starts trail; position stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`).
+- **TP1** closes `TP1_CLOSE_FRAC` (default **50%**, same as Divergent) at the TP1 price; the runner stays open with SL at breakeven and trailing. `TP1_CLOSE_FRAC=0` restores the old BE-only path (no take). The same bar that first tags TP1 does **not** flatten the runner at the new BE.
+- **`BE_HOURS` without TP1** closes at **mark** (`stale_no_tp1`) — lock a small win or cut a real loss. Do not move SL to entry and print a fake 0. After TP1, no time BE. In-flight rows that already parked SL at entry still label as `be_timeout` if that SL fills. TP2 fills at the TP2 price, not a retraced mark.
 - Tick path: `TICK_STOPS=1` evaluates open positions on each WS quote; 30s loop is backup.
 
 ## BTC / pair policy

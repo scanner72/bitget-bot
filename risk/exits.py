@@ -1,7 +1,8 @@
 """Paper TP/SL + risk exits (ported from divergent paper_tracker).
 
-Statuses: sl_hit, tp1_hit (partial BE — position stays open), tp2_hit,
-trailing_hit, dollar_stop, expired.
+Statuses: sl_hit, tp1_hit (take TP1_CLOSE_FRAC, runner stays with SL at BE), tp2_hit,
+trailing_hit, stale_no_tp1 (BE_HOURS without TP1, close at mark), be_timeout
+(legacy SL-at-entry fill), dollar_stop, expired.
 """
 
 from __future__ import annotations
@@ -94,10 +95,17 @@ class ExitConfig:
     enable_trailing: bool = True
     enable_stagnation: bool = False  # optional; off by default for bitget-bot
     atr_period: int = ATR_PERIOD
+    # Donor: take this fraction at TP1, runner stays with SL at BE. 0 = BE only.
+    tp1_close_frac: float = 0.5
 
     @classmethod
     def from_env(cls) -> "ExitConfig":
         load_dotenv(ROOT / ".env", override=False)
+        frac = _env_float("TP1_CLOSE_FRAC", 0.5)
+        if frac < 0:
+            frac = 0.0
+        if frac > 1:
+            frac = 1.0
         return cls(
             be_hours=max(0.0, _env_float("BE_HOURS", _env_float("BREAKEVEN_TIMEOUT_HOURS", 8.0))),
             max_hold_hours=max(1.0, _env_float("MAX_HOLD_HOURS", 48.0)),
@@ -112,6 +120,7 @@ class ExitConfig:
             enable_trailing=_env_bool("ENABLE_TRAILING", True),
             enable_stagnation=_env_bool("ENABLE_STAGNATION_EXIT", False),
             atr_period=max(2, _env_int("ATR_PERIOD", ATR_PERIOD)),
+            tp1_close_frac=frac,
         )
 
 
@@ -163,6 +172,53 @@ def _clamp_sl_to_breakeven(
     return min(float(sl), float(entry))
 
 
+def _at_breakeven(sl: float, entry: float) -> bool:
+    entry = float(entry)
+    if entry <= 0:
+        return False
+    return abs(float(sl) - entry) <= max(abs(entry) * 1e-9, 1e-12)
+
+
+def _sl_exit_status(
+    pos: dict[str, Any],
+    sl: float,
+    entry: float,
+    *,
+    is_long: bool,
+    updates: dict[str, Any] | None = None,
+) -> str:
+    """Name the SL fill. BE timer must not look like a profit trail."""
+    is_profitable = (sl >= entry) if is_long else (sl <= entry)
+    if not is_profitable:
+        return "sl_hit"
+    upd = updates or {}
+    be_to = bool(_pos_get(pos, "be_timeout", False)) or bool(upd.get("be_timeout"))
+    trailing_active = bool(_pos_get(pos, "trailing_active", False)) or bool(
+        upd.get("trailing_active")
+    )
+    if be_to and _at_breakeven(sl, entry) and not trailing_active:
+        return "be_timeout"
+    return "trailing_hit"
+
+
+def _tp_fill_price(
+    target: float,
+    *,
+    is_long: bool,
+    mark_price: float | None,
+) -> float:
+    """Fill at the TP level, never a retraced mark on the same bar."""
+    px = float(target)
+    if mark_price is None:
+        return px
+    mark = float(mark_price)
+    if is_long and mark > px:
+        return mark
+    if (not is_long) and mark < px:
+        return mark
+    return px
+
+
 def update_trailing_sl(
     pos: dict[str, Any],
     candle_high: float,
@@ -190,7 +246,7 @@ def update_trailing_sl(
         original_sl_f = None
     if original_sl_f is None:
         # Approximate: if already at BE, use atr or 2% of entry
-        atr_guess = float(_pos_get(pos, "atr") or entry * 0.02)
+        atr_guess = float(_pos_get(pos, "atr") or entry * 0.005)
         original_sl_f = (entry - atr_guess) if is_long else (entry + atr_guess)
 
     original_sl_dist = abs(entry - float(original_sl_f))
@@ -246,11 +302,12 @@ def update_trailing_sl(
 class ExitEvent:
     """Result of checking one position against a candle / mark."""
 
-    action: str  # none | update | close
+    action: str  # none | update | close | partial_close
     status: str | None = None
     close_price: float | None = None
     updates: dict[str, Any] = field(default_factory=dict)
     note: str | None = None
+    fraction: float | None = None
 
 
 def evaluate_exit(
@@ -317,9 +374,8 @@ def evaluate_exit(
     if sl is not None:
         hit_sl = (sl_check <= sl) if is_long else (sl_check >= sl)
         if hit_sl:
-            is_profitable = (sl >= entry) if is_long else (sl <= entry)
-            # P1: trailing_hit only when SL is actually at/beyond BE (not merely tp1 flag)
-            status = "trailing_hit" if is_profitable else "sl_hit"
+            status = _sl_exit_status(pos, sl, entry, is_long=is_long)
+            is_profitable = status != "sl_hit"
             # Prefer SL price for BE/trail exits so mark gap cannot invent a loss label
             close_price = sl if is_profitable else (cur_price or sl)
             return ExitEvent(action="close", status=status, close_price=close_price)
@@ -331,10 +387,11 @@ def evaluate_exit(
             return ExitEvent(
                 action="close",
                 status="tp2_hit",
-                close_price=cur_price or tp2,
+                close_price=_tp_fill_price(tp2, is_long=is_long, mark_price=cur_price),
             )
 
-    # 3) TP1 → hard BE (entry), do not close
+    # 3) TP1 → take TP1_CLOSE_FRAC (donor 50%), SL to BE on the runner
+    tp1_just_hit = False
     if tp1 is not None and not tp1_hit:
         hit_tp1 = (tp_check >= tp1) if is_long else (tp_check <= tp1)
         if hit_tp1:
@@ -346,7 +403,25 @@ def evaluate_exit(
                 updates["original_sl"] = sl
             sl = entry
             tp1_hit = True
-            # Continue — may trail / check other exits same bar
+            tp1_just_hit = True
+            frac = float(cfg.tp1_close_frac)
+            fill_px = _tp_fill_price(tp1, is_long=is_long, mark_price=cur_price)
+            if frac >= 1.0:
+                return ExitEvent(
+                    action="close",
+                    status="tp1_hit",
+                    close_price=fill_px,
+                    updates=updates,
+                )
+            if frac > 0:
+                return ExitEvent(
+                    action="partial_close",
+                    status="tp1_hit",
+                    close_price=fill_px,
+                    updates=updates,
+                    fraction=frac,
+                )
+            # frac 0: BE only, continue trailing same bar
 
     # 4) Trailing after TP1 (or when trailing_active)
     if cfg.enable_trailing and status is None:
@@ -384,33 +459,44 @@ def evaluate_exit(
                 updates.update(t_upd)
                 if "sl" in t_upd:
                     sl = float(t_upd["sl"])
-                # Re-check trailing SL same bar
+                # Re-check trailing SL same bar — but not a fresh TP1→BE flatten.
+                # Same 15m wick that tags TP1 often still includes entry; closing
+                # there prints trailing_hit with 0 PnL while the chart shows TP.
                 if sl is not None:
                     sl_check2 = candle_low if is_long else candle_high
                     hit2 = (sl_check2 <= sl) if is_long else (sl_check2 >= sl)
                     if hit2:
-                        is_profitable = (sl >= entry) if is_long else (sl <= entry)
-                        return ExitEvent(
-                            action="close",
-                            status="trailing_hit" if is_profitable else "sl_hit",
-                            close_price=sl if is_profitable else (cur_price or sl),
-                            updates=updates,
-                        )
+                        at_be = _at_breakeven(sl, entry)
+                        if tp1_just_hit and at_be:
+                            pass  # arm BE only; wait for a later bar/tick
+                        else:
+                            status = _sl_exit_status(
+                                pos, sl, entry, is_long=is_long, updates=updates
+                            )
+                            is_profitable = status != "sl_hit"
+                            return ExitEvent(
+                                action="close",
+                                status=status,
+                                close_price=sl if is_profitable else (cur_price or sl),
+                                updates=updates,
+                            )
 
-    # 5) Breakeven after N hours without TP1
+    # 5) Stale: BE_HOURS without TP1 → close at mark (not a fake SL fill at entry)
     if opened_at and tp1 is not None and not tp1_hit and cfg.be_hours > 0:
         elapsed_h = (now - opened_at).total_seconds() / 3600.0
-        if elapsed_h >= cfg.be_hours and sl is not None:
-            sl_at_loss = (sl < entry) if is_long else (sl > entry)
-            if sl_at_loss:
-                updates["sl"] = entry
-                updates["be_timeout"] = True
-                updates["be_timeout_ts"] = now.isoformat()
-                if _pos_get(pos, "original_sl") is None:
-                    updates["original_sl"] = sl
-                sl = entry
+        if elapsed_h >= cfg.be_hours:
+            px = cur_price if cur_price is not None else entry
+            return ExitEvent(
+                action="close",
+                status="stale_no_tp1",
+                close_price=px,
+                updates={
+                    "stale_no_tp1": True,
+                    "stale_no_tp1_ts": now.isoformat(),
+                },
+            )
 
-    # If TP1/BE already active, hard-clamp any pending SL update to entry
+    # If TP1 already active, hard-clamp any pending SL update to entry
     if updates.get("sl") is not None and (
         tp1_hit or updates.get("tp1_hit") or updates.get("be_timeout")
     ):
@@ -547,6 +633,68 @@ def apply_exit_event(
             "status": ev.status,
             "updates": dict(ev.updates),
         }
+
+    if ev.action == "partial_close" and ev.close_price is not None and ev.status:
+        frac = float(ev.fraction or 0.5)
+        close_meta = {
+            "exit_status": ev.status,
+            "exit_note": ev.note,
+            "partial": True,
+        }
+        if ev.updates:
+            close_meta.update(ev.updates)
+        try:
+            result = close_position(
+                pid,
+                float(ev.close_price),
+                meta=close_meta,
+                gate=gate,
+                book=book,
+                fraction=frac,
+            )
+            remaining = float(result.get("remaining_size_usd") or 0)
+            print(
+                f"[EXIT] PARTIAL {pid} {sym} status={ev.status} "
+                f"@ {ev.close_price} frac={frac} pnl={result.get('realized_pnl')} "
+                f"left={remaining}"
+            )
+            if remaining > 0 and ev.updates:
+                still = next(
+                    (p for p in book.list_open() if str(p.get("position_id") or "") == pid),
+                    None,
+                )
+                if still is not None:
+                    updated = apply_position_updates(still, ev.updates)
+                    if ev.updates.get("sl") is not None:
+                        try:
+                            from exec.router import sync_exchange_sl
+
+                            hub_meta = sync_exchange_sl(
+                                updated, ev.updates["sl"], reason="tp1_be"
+                            )
+                            if hub_meta:
+                                updated = apply_position_updates(updated, hub_meta)
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
+                    book.update_position(pid, updated)
+            return {
+                "action": "partial_close" if remaining > 0 else "close",
+                "position_id": pid,
+                "symbol": sym,
+                "status": ev.status,
+                "close_price": ev.close_price,
+                "realized_pnl": result.get("realized_pnl"),
+                "remaining_size_usd": remaining,
+                "fraction": frac,
+            }
+        except Exception as exc:  # noqa: BLE001
+            print(f"[EXIT] ERROR partial {pid} {sym}: {exc}")
+            return {
+                "action": "error",
+                "position_id": pid,
+                "symbol": sym,
+                "error": str(exc),
+            }
 
     if ev.action == "close" and ev.close_price is not None and ev.status:
         close_meta = {
