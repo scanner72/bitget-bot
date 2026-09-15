@@ -21,7 +21,7 @@ flowchart LR
 | Path | What it does |
 |------|----------------|
 | `ingest/bitget_ws.py`, `bitget_ohlcv.py`, `candle_cache.py` | Public WS candles/tickers (`MARKET_DATA_MODE=ws`) + REST bootstrap. No keys. Cache is the configured TF (`TIMEFRAME=15m`), not a 1m/5m/15m stack. |
-| `ingest/universe.py` | Auto-scan USDT-M swaps: crypto + rToken (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`). `hub_demo` then keeps only Demo instruments. |
+| `ingest/universe.py` | Auto-scan USDT-M swaps: crypto + rToken (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`) in paper/live. `hub_demo` scans the **full** Demo instrument catalog. |
 | `signals/engine.py`, `signals/divergence/` | Wilder RSI 14, swing pivots, `BULLISH_DIV` / `BEARISH_DIV` / `LEVEL_CROSS_*`. |
 | `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. |
 | `agent/decide.py` | `AGENT_MODE=rules` or `llm` (OpenAI-compatible). LLM errors → rules + `llm_fallback`. |
@@ -37,7 +37,7 @@ flowchart LR
 | `paper` | Local fills only. |
 | `live` | Blocked unless `BITGET_ALLOW_LIVE=1`. Not for the hackathon demo. |
 
-`PAPER_FALLBACK=0` (default): `hub_demo` scans and trades only symbols in the Bitget Demo instrument catalog. `PAPER_FALLBACK=1` restores paper-live fills at live mark for names missing on Demo. That PnL is a separate book from Demo equity.
+`PAPER_FALLBACK=0` (default): `hub_demo` scans **all** symbols in the Bitget Demo instrument catalog (not public top-N). `PAPER_FALLBACK=1` restores paper-live fills at live mark for names missing on Demo. That PnL is a separate book from Demo equity.
 
 ## Ports
 

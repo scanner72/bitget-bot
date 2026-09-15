@@ -9,7 +9,7 @@ Hackathon desk: public Bitget OHLCV → signals → decide → risk → **UTA De
 - Hub opens at `HUB_LEVERAGE=20` (exchange). Leave `PAPER_LEVERAGE=1` — `size_usd` is notional.
 - Prefer `.env.example` numbers (`RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15`) over stale code fallbacks.
 - Leave `TF_BLOCKER_ENABLED=0`. Pair blocker on.
-- Treat paper-live as opt-in (`PAPER_FALLBACK=1`). Default is Demo catalog only.
+- Treat paper-live as opt-in (`PAPER_FALLBACK=1`). Default `hub_demo` scans the full Demo catalog.
 
 ## Do not
 

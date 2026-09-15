@@ -17,7 +17,7 @@
 |------|-----------|
 | Исполнение | `hub_demo` — market **20×** (`HUB_LEVERAGE`) + биржевые SL+TP2 на UTA Demo |
 | Тень | Paper: ATR TP1 → стоп в безубыток + трейл |
-| Paper-live | `PAPER_FALLBACK=0` — только пары Demo. `=1` снова включает локальный fill; **этот PnL не складывать с Demo equity** |
+| Paper-live | `PAPER_FALLBACK=0` — скан всего Demo-каталога. `=1` снова включает локальный fill для имён вне Demo; **этот PnL не складывать с Demo equity** |
 | ТФ | только `15m`, `TF_BLOCKER_ENABLED=0` |
 | Агент | в `.env.example` — `rules`; живой стол — `llm` (Groq), при ошибке откат на rules |
 

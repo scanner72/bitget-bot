@@ -126,6 +126,47 @@ def demo_tradable_symbols(*, force: bool = False) -> set[str]:
         return set(_CACHE_SYMS)
 
 
+def bitget_id_to_ccxt(symbol: str) -> str:
+    """BTCUSDT -> BTC/USDT:USDT. Already-unified symbols pass through."""
+    s = (symbol or "").strip().upper()
+    if not s:
+        return s
+    if "/" in s:
+        return s
+    if s.endswith("USDT") and len(s) > 4:
+        return f"{s[:-4]}/USDT:USDT"
+    return s
+
+
+def demo_scan_symbols(*, public_markets: dict | None = None) -> list[str]:
+    """Full Demo UTA catalog as ccxt swap ids (not public top-N intersect).
+
+    ``public_markets`` (ccxt load_markets) drops Demo stubs with no public candles
+    (BGTEST002, RWATEST01, …).
+    """
+    try:
+        catalog = demo_tradable_symbols()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[DEMO-UNIVERSE] scan skipped: {exc}")
+        return []
+    if not catalog:
+        print("[DEMO-UNIVERSE] empty catalog; scan none until Demo instruments load")
+        return []
+    out = [bitget_id_to_ccxt(bg) for bg in catalog]
+    out = [s for s in out if s]
+    if public_markets:
+        skipped = [s for s in out if s not in public_markets]
+        out = [s for s in out if s in public_markets]
+        if skipped:
+            print(
+                f"[DEMO-UNIVERSE] skip {len(skipped)} no public candles: "
+                + ",".join(skipped)
+            )
+    out.sort(key=lambda s: (s != "BTC/USDT:USDT", s))
+    print(f"[DEMO-UNIVERSE] scan all Demo instruments n={len(out)}")
+    return out
+
+
 def drop_demo_symbol(symbol: str) -> None:
     """Remove a symbol after Bitget 25100 so later ENTERs skip the hub."""
     bg = ccxt_to_bitget_symbol(symbol).upper()

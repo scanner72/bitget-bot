@@ -3,6 +3,7 @@
 Config from env / .env:
   SYMBOLS            comma-separated (BTCUSDT or BTC/USDT:USDT); used when SCAN_MODE=fixed
   SCAN_MODE          fixed|auto (default auto) — auto = top crypto + rToken USDT-M perps
+                     (hub_demo ignores top-N and scans the full Demo catalog)
   SCAN_CRYPTO_TOP    default 70 (with WS)
   SCAN_RTOKEN_TOP    default 30
   MARKET_DATA_MODE   ws|rest (default ws) — public candles via WebSocket
@@ -197,14 +198,17 @@ def process_symbol(
         return summary
 
 
-def _restrict_scan_to_demo(symbols: list[str]) -> list[str]:
-    """hub_demo scans only Bitget Demo instruments. Paper/live keep the public list."""
-    from exec.demo_universe import filter_to_demo_symbols
-    from exec.router import exec_mode
+def _restrict_scan_to_demo(exchange: Any | None = None) -> list[str]:
+    """hub_demo scans the full Bitget Demo catalog (minus stubs without public OHLCV)."""
+    from exec.demo_universe import demo_scan_symbols
 
-    if exec_mode() != "hub_demo":
-        return list(symbols)
-    return filter_to_demo_symbols(list(symbols))
+    markets = None
+    if exchange is not None:
+        try:
+            markets = exchange.markets or exchange.load_markets()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[DEMO-UNIVERSE] public markets unavailable: {exc}")
+    return demo_scan_symbols(public_markets=markets)
 
 
 def _active_symbols(
@@ -212,7 +216,17 @@ def _active_symbols(
     cache: UniverseCache | None,
 ) -> tuple[list[str], UniverseCache | None]:
     """Resolve symbols for this pass (auto refresh or fixed SYMBOLS)."""
+    from exec.router import exec_mode
+
     snap = None
+    if exec_mode() == "hub_demo":
+        if cache is None:
+            cache = UniverseCache()
+            set_shared_exchange(cache.exchange)
+        symbols = _restrict_scan_to_demo(cache.exchange)
+        cfg.symbols = list(symbols)
+        print(f"[universe] demo_catalog={len(symbols)}")
+        return symbols, cache
     if cfg.scan_mode != "auto":
         symbols = list(cfg.fixed_symbols or cfg.symbols)
     else:
@@ -223,7 +237,6 @@ def _active_symbols(
             cfg.fixed_symbols or cfg.symbols,
             cache=cache,
         )
-    symbols = _restrict_scan_to_demo(symbols)
     cfg.symbols = list(symbols)
     if snap is not None:
         print(

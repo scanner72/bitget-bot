@@ -202,6 +202,26 @@ def main() -> int:
             )
         _assert(kept == ["BTC/USDT:USDT", "ETH/USDT:USDT"], kept)
 
+        from exec.demo_universe import bitget_id_to_ccxt, demo_scan_symbols
+
+        _assert(bitget_id_to_ccxt("BTCUSDT") == "BTC/USDT:USDT", "btc map")
+        _assert(bitget_id_to_ccxt("ETH/USDT:USDT") == "ETH/USDT:USDT", "passthrough")
+        with patch(
+            "exec.demo_universe.demo_tradable_symbols",
+            return_value={"ETHUSDT", "BTCUSDT", "XAGUSDT"},
+        ):
+            scan = demo_scan_symbols()
+        _assert(scan[0] == "BTC/USDT:USDT", scan)
+        _assert(scan == ["BTC/USDT:USDT", "ETH/USDT:USDT", "XAG/USDT:USDT"], scan)
+        with patch(
+            "exec.demo_universe.demo_tradable_symbols",
+            return_value={"ETHUSDT", "BTCUSDT", "BGTEST002USDT"},
+        ):
+            filtered = demo_scan_symbols(
+                public_markets={"BTC/USDT:USDT": {}, "ETH/USDT:USDT": {}}
+            )
+        _assert(filtered == ["BTC/USDT:USDT", "ETH/USDT:USDT"], filtered)
+
     print("smoke_paper_fallback OK")
     return 0
 
