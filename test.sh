@@ -14,6 +14,7 @@ fi
 
 smokes=(
   scripts/smoke_signal.py
+  scripts/smoke_candidate_log.py
   scripts/smoke_risk.py
   scripts/smoke_decide.py
   scripts/smoke_llm_decide.py
