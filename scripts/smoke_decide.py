@@ -76,8 +76,18 @@ def main() -> int:
         "rsi": 48.0,
     }
     d4 = decide(lcu)
-    print(f"ENTER lcu: {d4}")
-    _assert(d4["action"] == "ENTER" and d4["side"] == "short", d4)
+    print(f"SKIP lcu: {d4}")
+    _assert(d4["action"] == "SKIP" and "cross_up_disabled" in d4["rules_fired"], d4)
+
+    lcd_mid = {
+        "symbol": "ETH/USDT:USDT",
+        "type": "LEVEL_CROSS_DOWN",
+        "price": 3200.0,
+        "rsi": 42.0,
+    }
+    d_lcd_mid = decide(lcd_mid)
+    print(f"ENTER lcd mid RSI: {d_lcd_mid}")
+    _assert(d_lcd_mid["action"] == "ENTER" and d_lcd_mid["side"] == "long", d_lcd_mid)
 
     d5 = decide({"symbol": "BTC/USDT:USDT", "type": "BULLISH_DIV", "price": 1.0})
     print(f"SKIP missing rsi: {d5}")

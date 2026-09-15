@@ -13,7 +13,7 @@ Code: `risk/gate.py`, `risk/sizing.py`, `risk/exits.py`, `risk/atr.py`. Values b
 | Max open positions | `MAX_POSITIONS` | `15` |
 | One position per symbol | `ONE_POSITION_PER_SYMBOL` | true |
 | Re-entry cooldown | `COOLDOWN_SEC` | `900` |
-| Signal types | `ALLOWED_TYPES` | `BULLISH_DIV,BEARISH_DIV` (LEVEL_CROSS off) |
+| Signal types | `ALLOWED_TYPES` | `BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (`LEVEL_CROSS_UP` stripped) |
 | Longs only if RSI ≤ | `RSI_LONG_MAX` | `30` |
 | RSI skip extremes | `RSI_OVERBOUGHT` / `RSI_OVERSOLD` | `70` / `30` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |

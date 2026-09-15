@@ -155,6 +155,17 @@ def decide_rules(
     overbought, oversold = _rsi_thresholds()
     rules.append(f"type:{t}")
 
+    # v1 analytics 2026-09-15: CROSS_UP long WR 12.7% / −$5.5k. Never trade UP.
+    if t == "LEVEL_CROSS_UP":
+        rules.append("cross_up_disabled")
+        return {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": None,
+            "rationale": "LEVEL_CROSS_UP disabled (v1 leak)",
+            "rules_fired": rules,
+        }
+
     side: str | None = None
     if t in LONG_TYPES:
         side = "long"
@@ -192,9 +203,15 @@ def decide_rules(
             "rules_fired": rules,
         }
 
-    # v1: longs only in RSI zone (pairs.rsi_long_max default 30)
+    # v1: DIV longs only in RSI zone (pairs.rsi_long_max default 30).
+    # Fade CROSS_DOWN is a breakdown long — do not require RSI≤30.
     rsi_long_max = _env_float("RSI_LONG_MAX", 30.0)
-    if side == "long" and rsi_long_max > 0 and rsi > rsi_long_max:
+    if (
+        side == "long"
+        and t != "LEVEL_CROSS_DOWN"
+        and rsi_long_max > 0
+        and rsi > rsi_long_max
+    ):
         rules.append("rsi_long_zone")
         return {
             "action": "SKIP",

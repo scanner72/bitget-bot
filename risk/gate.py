@@ -55,13 +55,15 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _env_types(name: str = "ALLOWED_TYPES") -> set[str] | None:
-    """Default is DIV only. LEVEL_CROSS is detected but not traded unless listed."""
-    default = {"BULLISH_DIV", "BEARISH_DIV"}
+    """DIV + fade LEVEL_CROSS_DOWN (long). LEVEL_CROSS_UP is never gated in."""
+    default = {"BULLISH_DIV", "BEARISH_DIV", "LEVEL_CROSS_DOWN"}
+    blocked = {"LEVEL_CROSS_UP"}
     v = os.getenv(name)
     if v is None or str(v).strip() == "":
         return set(default)
     parts = [p.strip().upper() for p in str(v).split(",") if p.strip()]
-    return set(parts) if parts else set(default)
+    allowed = {p for p in parts if p not in blocked}
+    return allowed if allowed else set(default)
 
 
 def _parse_ts(raw: Any) -> float | None:

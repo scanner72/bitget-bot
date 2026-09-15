@@ -97,7 +97,7 @@ def main() -> int:
                 max_positions=3,
                 one_position_per_symbol=True,
                 cooldown_sec=0.0,
-                allowed_types={"BULLISH_DIV", "BEARISH_DIV"},
+                allowed_types={"BULLISH_DIV", "BEARISH_DIV", "LEVEL_CROSS_DOWN"},
             ),
             state=RiskState(),
             state_path=tmp_path / "risk_types.json",
@@ -111,16 +111,25 @@ def main() -> int:
             r_cross["allowed"] is False and str(r_cross["reason"]).startswith("type_not_allowed"),
             r_cross,
         )
+        r_down = gate_types.check(
+            {"symbol": "ETH/USDT:USDT", "type": "LEVEL_CROSS_DOWN"}, 50.0
+        )
+        print(f"check_cross_down allow={r_down['allowed']} reason={r_down['reason']}")
+        _assert(r_down["allowed"] is True, r_down)
         r_div = gate_types.check({"symbol": "BTC/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
         _assert(r_div["allowed"] is True, r_div)
 
         old_types = os.environ.pop("ALLOWED_TYPES", None)
         try:
-            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV"}, _env_types())
+            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV", "LEVEL_CROSS_DOWN"}, _env_types())
             os.environ["ALLOWED_TYPES"] = ""
-            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV"}, "empty ALLOWED_TYPES")
+            _assert(
+                _env_types() == {"BULLISH_DIV", "BEARISH_DIV", "LEVEL_CROSS_DOWN"},
+                "empty ALLOWED_TYPES",
+            )
             os.environ["ALLOWED_TYPES"] = "BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP"
-            _assert("LEVEL_CROSS_UP" in _env_types(), _env_types())
+            _assert("LEVEL_CROSS_UP" not in _env_types(), _env_types())
+            _assert(_env_types() == {"BULLISH_DIV", "BEARISH_DIV"}, _env_types())
         finally:
             if old_types is None:
                 os.environ.pop("ALLOWED_TYPES", None)

@@ -22,7 +22,7 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 | Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
 | Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
 | TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
-| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV` (LEVEL_CROSS detected, not traded) |
+| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (`LEVEL_CROSS_UP` off) |
 | Agent | `.env.example` default `AGENT_MODE=rules`. `llm` = rules first; model may only SKIP a rules ENTER. LLM failure keeps that ENTER |
 | BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
 

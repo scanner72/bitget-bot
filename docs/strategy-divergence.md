@@ -4,14 +4,14 @@ Detector: `signals/engine.py` + `signals/divergence/detector.py`. Config: `signa
 
 ## Types (`ALLOWED_TYPES`)
 
-Desk trades **divergence only** (`BULLISH_DIV`, `BEARISH_DIV`). The detector still emits `LEVEL_CROSS_*` (support/resistance break); the risk gate drops them (`type_not_allowed`). Restore via `.env` if you want them back.
+Desk trades **divergence** plus fade **`LEVEL_CROSS_DOWN` (long only)**. `LEVEL_CROSS_UP` is detected but never traded (`cross_up_disabled` / stripped from `ALLOWED_TYPES`).
 
 | Type | Meaning | Traded |
 |------|---------|--------|
 | `BULLISH_DIV` | Price lower low, RSI 14 higher low → long candidate | yes |
 | `BEARISH_DIV` | Price higher high, RSI 14 lower high → short candidate | yes |
-| `LEVEL_CROSS_UP` | Close through bearish resistance. Code would fade (short); gate drops it. | no |
-| `LEVEL_CROSS_DOWN` | Close through bullish support. Code would fade (long); gate drops it. | no |
+| `LEVEL_CROSS_UP` | Close through bearish resistance. Disabled (v1 leak). | no |
+| `LEVEL_CROSS_DOWN` | Close through bullish support → **long** (fade). Not subject to `RSI_LONG_MAX`. | yes |
 
 Pivots: lookback 5 bars each side (`DIV_LOOKBACK_LEFT/RIGHT`). Agent then applies `RSI_LONG_MAX=30` (no long if RSI above that), `RSI_OVERBOUGHT=70` / `RSI_OVERSOLD=30`, BTC regime/momentum, and the pair blocker.
 
