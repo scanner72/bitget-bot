@@ -3,6 +3,7 @@
 Config from env / .env:
   SYMBOLS            comma-separated (BTCUSDT or BTC/USDT:USDT); used when SCAN_MODE=fixed
   SCAN_MODE          fixed|auto (default auto) — auto = top crypto + rToken USDT-M perps
+                     (hub_demo ignores top-N and scans the full Demo catalog)
   SCAN_CRYPTO_TOP    default 70 (with WS)
   SCAN_RTOKEN_TOP    default 30
   MARKET_DATA_MODE   ws|rest (default ws) — public candles via WebSocket
@@ -29,6 +30,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from desk.candidate_log import CandidateLog, candidate_from_signal
+from desk.decision_log import ensure_session_id
 from desk.pipeline import evaluate_candidate
 from risk.gate import RiskGate
 from risk.exits import ExitConfig, check_open_exits
@@ -186,6 +188,7 @@ def process_symbol(
                     "timeframe": cfg.timeframe,
                     "ohlcv_df": df,
                     "ohlcv_limit": cfg.ohlcv_limit,
+                    "session_id": ensure_session_id(),
                 },
             )
             summary["action"] = out.get("action")
@@ -197,20 +200,45 @@ def process_symbol(
         return summary
 
 
+def _restrict_scan_to_demo(exchange: Any | None = None) -> list[str]:
+    """hub_demo scans the full Bitget Demo catalog (minus stubs without public OHLCV)."""
+    from exec.demo_universe import demo_scan_symbols
+
+    markets = None
+    if exchange is not None:
+        try:
+            markets = exchange.markets or exchange.load_markets()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[DEMO-UNIVERSE] public markets unavailable: {exc}")
+    return demo_scan_symbols(public_markets=markets)
+
+
 def _active_symbols(
     cfg: LoopConfig,
     cache: UniverseCache | None,
 ) -> tuple[list[str], UniverseCache | None]:
     """Resolve symbols for this pass (auto refresh or fixed SYMBOLS)."""
+    from exec.router import exec_mode
+
+    snap = None
+    if exec_mode() == "hub_demo":
+        if cache is None:
+            cache = UniverseCache()
+            set_shared_exchange(cache.exchange)
+        symbols = _restrict_scan_to_demo(cache.exchange)
+        cfg.symbols = list(symbols)
+        print(f"[universe] demo_catalog={len(symbols)}")
+        return symbols, cache
     if cfg.scan_mode != "auto":
-        return list(cfg.fixed_symbols or cfg.symbols), cache
-    if cache is None:
-        cache = UniverseCache()
-        set_shared_exchange(cache.exchange)
-    symbols, _mode, snap = resolve_scan_symbols(
-        cfg.fixed_symbols or cfg.symbols,
-        cache=cache,
-    )
+        symbols = list(cfg.fixed_symbols or cfg.symbols)
+    else:
+        if cache is None:
+            cache = UniverseCache()
+            set_shared_exchange(cache.exchange)
+        symbols, _mode, snap = resolve_scan_symbols(
+            cfg.fixed_symbols or cfg.symbols,
+            cache=cache,
+        )
     cfg.symbols = list(symbols)
     if snap is not None:
         print(
@@ -296,6 +324,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
     if cfg.scan_mode == "auto":
         cache = UniverseCache()
         set_shared_exchange(cache.exchange)
+    session_id = ensure_session_id()
     print(
         f"desk.loop start mode={mode} market_data={md_mode} scan={cfg.scan_mode} "
         f"tf={cfg.timeframe} "
@@ -303,7 +332,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
         f"crypto_top={cfg.scan_crypto_top} rtoken_top={cfg.scan_rtoken_top} "
         f"refresh={cfg.scan_refresh_sec}s "
         f"fixed_symbols={cfg.fixed_symbols} out={cfg.candidates_path} "
-        f"decisions={cfg.decisions_path}"
+        f"decisions={cfg.decisions_path} session={session_id}"
     )
     exit_cfg = ExitConfig.from_env()
     last_blocker_ts = 0.0

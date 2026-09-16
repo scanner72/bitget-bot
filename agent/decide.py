@@ -1,6 +1,7 @@
-"""Agent decide: rules-first, optional OpenAI-compatible LLM with rules fallback.
+"""Agent decide: rules-first, optional OpenAI-compatible LLM with the same algorithm.
 
 Paper-only policy. AGENT_MODE=rules|llm (default rules).
+LLM prompt is a copy of decide_rules — not a conservative overlay.
 """
 
 from __future__ import annotations
@@ -116,6 +117,138 @@ def _risk_context_summary(context: dict[str, Any] | None) -> dict[str, Any]:
     # Always include size hint
     out.setdefault("proposed_size_usd", _proposed_size_usd(ctx))
     return out
+
+
+def _allowed_types() -> list[str] | None:
+    """Same parse as risk/gate.py ALLOWED_TYPES. None = all types allowed."""
+    v = _env_str("ALLOWED_TYPES", "")
+    if not v:
+        return None
+    parts = [p.strip().upper() for p in v.split(",") if p.strip()]
+    return parts or None
+
+
+def _rsi_long_max() -> float:
+    return _env_float("RSI_LONG_MAX", 30.0)
+
+
+def _algorithm_spec(context: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Live decide_rules + type filter numbers for the LLM (no secrets)."""
+    overbought, oversold = _rsi_thresholds()
+    return {
+        "timeframe": "15m",
+        "rsi_length": 14,
+        "pivot_lookback_left": 5,
+        "pivot_lookback_right": 5,
+        "type_to_side": {
+            "BULLISH_DIV": "long",
+            "LEVEL_CROSS_DOWN": "long",
+            "BEARISH_DIV": "short",
+            "LEVEL_CROSS_UP": "short",
+        },
+        "allowed_types": _allowed_types(),
+        "allow_long": _allow_long(),
+        "allow_short": _allow_short(),
+        "rsi_overbought": overbought,
+        "rsi_oversold": oversold,
+        "rsi_long_max": _rsi_long_max(),
+        "proposed_size_usd": _proposed_size_usd(context),
+    }
+
+
+def _slim_candidate(candidate: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not candidate:
+        return None
+    keys = (
+        "symbol",
+        "type",
+        "price",
+        "level_price",
+        "rsi",
+        "timeframe",
+        "bar_ts",
+        "bar_index",
+    )
+    out = {k: candidate[k] for k in keys if k in candidate}
+    t = out.get("type")
+    if t is not None:
+        out["type"] = str(t).upper().strip()
+    return out
+
+
+def build_llm_messages(
+    candidate: dict[str, Any] | None,
+    context: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """System+user messages: copy of decide_rules, not a discretionary overlay."""
+    spec = _algorithm_spec(context)
+    allowed = spec["allowed_types"]
+    allowed_txt = (
+        "any of BULLISH_DIV, BEARISH_DIV, LEVEL_CROSS_UP, LEVEL_CROSS_DOWN"
+        if not allowed
+        else ", ".join(allowed)
+    )
+    rsi_long = float(spec["rsi_long_max"])
+    long_zone = (
+        f"7. long AND rsi_long_max ({rsi_long:.0f}) > 0 AND rsi > {rsi_long:.0f} "
+        f"→ SKIP (rsi_long_zone). This is the only 'RSI not low enough' rule. "
+        f"It applies to longs only. Shorts have no RSI_LONG_MAX."
+        if rsi_long > 0
+        else "7. rsi_long_max is 0/off — do not skip longs for a mid RSI."
+    )
+    size = float(spec["proposed_size_usd"])
+    system = f"""You are decide() for the Bitget S2 Divergent desk (UTA Demo execution + local paper shadow). You do not search for signals. The candidate is already a confirmed 15m detector event (RSI 14, pivot lookback 5 left / 5 right). Confirmation, structure, and "is this a real divergence" are done. Your job is the same as decide_rules() in agent/decide.py.
+
+Apply ONLY this algorithm. Do not add filters. Forbidden extra reasons (never SKIP for these): weak/low-conviction, unconfirmed, late entry, price already through/below/above level, poor risk/reward, 15m noise, wait for HTF, RSI not oversold/overbought enough (except the numbered RSI rules below), "be conservative", "paper trading favors waiting". Demo/paper is the venue, not a SKIP reason.
+
+Actions: ENTER or SKIP only. Never REDUCE on a new candidate (exits are ATR TP1 → BE/trail, TP2, SL, dollar-stop, stale_no_tp1 — not you).
+
+Type → side (fixed, do not invert):
+- BULLISH_DIV → long
+- LEVEL_CROSS_DOWN → long (fade: cross down through bullish-div support)
+- BEARISH_DIV → short
+- LEVEL_CROSS_UP → short (cross up through bearish-div resistance)
+- unknown type → SKIP
+
+Allowed types this desk: {allowed_txt}.
+If allowed_types is a non-empty list and type is not in it → SKIP (type_not_allowed).
+
+Hard SKIP, in order:
+1. missing candidate, or missing price, or missing rsi
+2. unknown type
+3. type not in allowed_types (when that list is set)
+4. long while allow_long is false
+5. short while allow_short is false
+6. long AND rsi >= rsi_overbought ({float(spec['rsi_overbought']):.0f}) → SKIP (rsi_extreme_long)
+   short AND rsi <= rsi_oversold ({float(spec['rsi_oversold']):.0f}) → SKIP (rsi_extreme_short)
+   A short with rsi 40–69 is valid. A long with rsi 31–69 is NOT, if rsi_long_max is on.
+{long_zone}
+
+If none of the SKIP rules fired → ENTER.
+side must match the type map. size_usd = {size:.2f} on ENTER, 0 on SKIP. Do not resize; ATR notional clamp is later.
+
+Do not apply: BTC 1h regime/momentum/EMA50, pair blocker, max positions, cooldown, daily loss, Demo catalog. Later stages do that. risk_context is informational only.
+
+Reply with one JSON object, first character '{{':
+{{"action":"ENTER"|"SKIP","size_usd":number,"side":"long"|"short"|null,"rationale":string}}
+rationale must name the fired rule, same style as decide_rules, e.g. "long ENTER on BULLISH_DIV rsi=28.1 size={size:.2f}" or "long RSI zone rsi=42.0> {rsi_long:.0f}". No markdown, no thinking, no extra text."""
+
+    user_payload = {
+        "algorithm": spec,
+        "candidate": _slim_candidate(candidate),
+        "risk_context": {
+            **_risk_context_summary(context),
+            "note": "Informational. Do not SKIP because of these fields.",
+        },
+        "task": "Run the algorithm on this candidate. ENTER or SKIP only.",
+    }
+    return [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": json.dumps(user_payload, ensure_ascii=False),
+        },
+    ]
 
 
 def decide_rules(
@@ -319,30 +452,7 @@ def _llm_chat_completions(
     if timeout <= 0:
         timeout = 20.0
 
-    risk_summary = _risk_context_summary(context)
-    user_payload = {
-        "candidate": candidate,
-        "risk_context": risk_summary,
-        "instructions": (
-            "Return ONLY a JSON object with keys: "
-            "action (ENTER|SKIP|REDUCE), size_usd (number), "
-            "side (long|short|null), rationale (string). "
-            "Paper trading only; be conservative."
-        ),
-    }
-    system = (
-        "You are a paper-trading decision agent. "
-        "Given a signal candidate and risk context, choose ENTER, SKIP, or REDUCE. "
-        "Respond with a single JSON object only. No markdown, no thinking, no extra text. "
-        "The first character of the reply must be '{'."
-    )
-    messages = [
-        {"role": "system", "content": system},
-        {
-            "role": "user",
-            "content": json.dumps(user_payload, ensure_ascii=False),
-        },
-    ]
+    messages = build_llm_messages(candidate, context)
     url = f"{base}/chat/completions"
     headers = {
         "Content-Type": "application/json",
@@ -442,8 +552,8 @@ def decide(
     """Decide ENTER | SKIP | REDUCE.
 
     AGENT_MODE=rules (default): pure rules path.
-    AGENT_MODE=llm: OpenAI-compatible Chat Completions; on any failure/timeout
-    fall back to rules and set rules_fired including llm_fallback.
+    AGENT_MODE=llm: same algorithm as decide_rules, via Chat Completions;
+    on any failure/timeout fall back to rules and set llm_fallback.
 
     Returns:
         {

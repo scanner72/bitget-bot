@@ -7,6 +7,45 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+# Legacy rows used relative OHLCV window index (0-199). Never treat that as identity.
+_MISSING_BAR_TS = "no_bar_ts"
+
+
+def _normalize_bar_ts(value: Any) -> str | None:
+    """Stable UTC candle id. Rejects relative bar_index ints like 193/194."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, datetime):
+        # Unix ms/sec clocks are 10+ digits; window indexes are 0-199.
+        if abs(float(value)) < 1_000_000_000:
+            return None
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return None
+        if n >= 1e12:
+            dt = datetime.fromtimestamp(n / 1000.0, tz=timezone.utc)
+        else:
+            dt = datetime.fromtimestamp(n, tz=timezone.utc)
+        return dt.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        s = str(value).strip()
+        if not s:
+            return None
+        if s.isdigit() and len(s) < 10:
+            return None
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 def candidate_from_signal(
     signal: dict[str, Any],
@@ -32,7 +71,16 @@ def candidate_from_signal(
         except (TypeError, ValueError):
             return None
 
-    return {
+    bar_ts = _normalize_bar_ts(signal.get("bar_ts"))
+    if bar_ts is None and signal.get("df") is not None:
+        try:
+            from signals.engine import bar_ts_iso
+
+            bar_ts = _normalize_bar_ts(bar_ts_iso(signal["df"], bar_index))
+        except Exception:  # noqa: BLE001
+            bar_ts = None
+
+    rec: dict[str, Any] = {
         "ts": now.isoformat(),
         "symbol": symbol,
         "timeframe": timeframe,
@@ -42,22 +90,26 @@ def candidate_from_signal(
         "rsi": _f("rsi"),
         "bar_index": bar_index,
     }
+    if bar_ts:
+        rec["bar_ts"] = bar_ts
+    return rec
 
 
-def _dedup_key(rec: dict[str, Any]) -> tuple[str, str, int | str | None]:
-    bar = rec.get("bar_index")
-    if bar is None:
-        bar = rec.get("bar_ts") or rec.get("ts")
-    return (str(rec.get("symbol", "")), str(rec.get("type", "")), bar)
+def _dedup_key(rec: dict[str, Any]) -> tuple[str, str, str]:
+    """Identity is symbol + type + candle time, not the 200-bar window index."""
+    bar_ts = _normalize_bar_ts(rec.get("bar_ts"))
+    if not bar_ts:
+        bar_ts = _MISSING_BAR_TS
+    return (str(rec.get("symbol", "")), str(rec.get("type", "")), bar_ts)
 
 
 class CandidateLog:
-    """JSONL candidate store with symbol+type+bar_index dedup."""
+    """JSONL candidate store with symbol+type+bar_ts dedup."""
 
     def __init__(self, path: Path | str, *, max_memory_keys: int = 4096) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._seen: set[tuple[str, str, int | str | None]] = set()
+        self._seen: set[tuple[str, str, str]] = set()
         self._max_memory_keys = max_memory_keys
         self._load_existing_keys()
 
@@ -74,7 +126,12 @@ class CandidateLog:
                         rec = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    self._seen.add(_dedup_key(rec))
+                    key = _dedup_key(rec)
+                    # Old rows keyed on relative bar_index (193/194). Skip so they
+                    # cannot block a new candle of the same symbol+type.
+                    if key[2] == _MISSING_BAR_TS:
+                        continue
+                    self._seen.add(key)
         except OSError:
             return
         self._trim()

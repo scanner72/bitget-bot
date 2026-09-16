@@ -8,12 +8,13 @@
 
 ## Repo
 
-- [ ] GitHub public: `https://github.com/scanner72/bitget-bot` (or your fork)
+- [x] GitHub public: `https://github.com/scanner72/bitget-bot` (or your fork)
 - [ ] `.env` **not** committed (Demo keys only in local env / `.env.example` placeholders)
-- [ ] README EN+RU pitch, architecture, hub_demo quickstart, API table
-- [ ] Docker: `Dockerfile`, `docker-compose.yml` (optional for judges)
-- [ ] Links: [`docs/DEMO.md`](DEMO.md) + this file + [`docs/CURSOR_HANDOFF.md`](CURSOR_HANDOFF.md)
+- [x] README EN+RU pitch, **weekend thesis**, architecture, hub_demo quickstart, API table
+- [x] Docker: `Dockerfile`, `docker-compose.yml` (optional for judges)
+- [x] Links: [`docs/DEMO.md`](DEMO.md) + this file + [`docs/CURSOR_HANDOFF.md`](CURSOR_HANDOFF.md) + [`docs/research-graveyard.md`](research-graveyard.md)
 - [x] **Paper / Demo trading log (Track 1 required):** [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv) — fields `timestamp`, `trading_pair`, `direction`, `price`, `quantity`, `account_balance_change`, plus `status` / `mode`. How to regenerate: [`docs/evidence/README.md`](evidence/README.md)
+- [x] **Decision hashes:** `python scripts/verify_decision_log.py` — fixture [`docs/evidence/fixtures/decisions.hashed.jsonl`](evidence/fixtures/decisions.hashed.jsonl). Runtime rows in `data/decisions.jsonl` carry `session_id`, `context`, `manifest_hash`, SHA-256 `hash` / `prev_hash` (not on-chain, not a debate log).
 
 ---
 
@@ -79,13 +80,14 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 
 ## Technical smoke (before submit)
 
-- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`
+- [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`, `HUB_LEVERAGE=20`
 - [ ] Smokes: `smoke_signal` → `smoke_bitget` → `smoke_hub_demo` → `smoke_risk` → `smoke_decide` → `smoke_paper`
 - [ ] Desk once: `python scripts/run_signal_loop.py --once`
 - [ ] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true
 - [ ] Dashboard `/` + `/positions` (Demo PnL) + `/decisions` + `/account` (equity overlay)
 - [ ] Optional: `docker compose up -d`
 - [ ] Evidence log: `python scripts/export_paper_log.py --from-desk` → [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv)
+- [ ] Decision hashes: `python scripts/verify_decision_log.py`
 
 ---
 
@@ -99,7 +101,7 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | Demo video | TBD |
 | X post | TBD |
 | Paper / Demo trading log | `https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/paper_trading_log.csv` |
-| Notes | Bitget Demo UTA via Agent Hub (`paptrading`); public OHLCV via ccxt; live mainnet disabled. Log is Demo/paper, not live. |
+| Notes | Bitget Demo UTA via Agent Hub (`paptrading`); public OHLCV via ccxt; live mainnet disabled. Log is Demo/paper, not live. Weekend thesis + rejected ideas: README + [`docs/research-graveyard.md`](research-graveyard.md). Decision integrity: `python scripts/verify_decision_log.py`. |
 
 ---
 
@@ -110,6 +112,6 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | Keep `BITGET_ALLOW_LIVE=0` for demo | Commit API secrets |
 | Use Demo keys in local `.env` only | Show `.env` on camera |
 | Refresh `docs/demo_artifacts/` before screenshots | Claim live mainnet trading |
-| Link README + DEMO + handoff | Kill healthy overnight `--poll` without reason |
+| Link README + DEMO + handoff + [research-graveyard](research-graveyard.md) | Kill healthy overnight `--poll` without reason |
 
-**Status:** docs aligned with `hub_demo` stack. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv). Video not produced in-repo.
+**Status:** docs aligned with `hub_demo` stack. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv). Decision fixture verifies offline. Video not produced in-repo.

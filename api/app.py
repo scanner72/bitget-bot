@@ -354,7 +354,7 @@ def health() -> dict[str, Any]:
         "hub_demo": mode == "hub_demo",
         "bitget_demo": bitget_demo_flag or mode == "hub_demo",
         "hub_sync_exchange_sl": hub_sync,
-        "paper_fallback": (os.getenv("PAPER_FALLBACK") or "1").strip().lower()
+        "paper_fallback": (os.getenv("PAPER_FALLBACK") or "0").strip().lower()
         not in {"0", "false", "no", "off"}
         and mode == "hub_demo",
         "agent_mode": _agent_mode_name(),
@@ -707,7 +707,7 @@ def _pos_rows_html(open_pos: list[dict[str, Any]]) -> str:
 
 def _dec_rows_html(decs: list[dict[str, Any]]) -> str:
     if not decs:
-        return "<tr><td colspan='7'><em>none</em></td></tr>"
+        return "<tr><td colspan='8'><em>none</em></td></tr>"
     rows = ""
     for d in reversed(decs):
         agent = d.get("agent") if isinstance(d.get("agent"), dict) else {}
@@ -719,6 +719,18 @@ def _dec_rows_html(decs: list[dict[str, Any]]) -> str:
         ts_short = ts[11:19] if len(ts) >= 19 else ts
         kind = _decision_agent_kind(d)
         why = _decision_rationale(d)
+        hash_full = str(d.get("hash") or "")
+        hash_short = hash_full[:8] if hash_full else "—"
+        sess = str(d.get("session_id") or "")
+        sess_short = sess[:8] if sess else ""
+        why_title = why
+        if hash_full:
+            why_title = f"{why} | hash={hash_full}" if why else f"hash={hash_full}"
+        sess_html = (
+            f"<br/><span class='sub'>{_html_escape(sess_short)}</span>"
+            if sess_short
+            else ""
+        )
         rows += (
             "<tr>"
             f"<td class='mono'>{_html_escape(ts_short)}</td>"
@@ -727,7 +739,9 @@ def _dec_rows_html(decs: list[dict[str, Any]]) -> str:
             f"<td>{_agent_kind_badge(kind)}</td>"
             f"<td>{_action_badge(action)}</td>"
             f"<td>{_allowed_badge(allowed)}</td>"
-            f"<td class='sub' title='{_html_escape(why)}'>{_html_escape(why) or '—'}</td>"
+            f"<td class='sub' title='{_html_escape(why_title)}'>{_html_escape(why) or '—'}</td>"
+            f"<td class='mono' title='{_html_escape(hash_full)} session={_html_escape(sess)}'>"
+            f"{_html_escape(hash_short)}{sess_html}</td>"
             "</tr>"
         )
     return rows
@@ -893,7 +907,7 @@ def desk_live_state() -> dict[str, Any]:
         "agent_meta": agent_meta,
         "pos_head": f"Open positions ({open_n}) · click for LIVE chart",
         "hist_head": f"Trade history ({hist_n}) · click for LIVE chart",
-        "dec_head": f"Decision timeline ({dec_n})",
+        "dec_head": f"Decision timeline ({dec_n}) · SHA-256",
         "mode": mode,
         "src": src,
         "ts": datetime.now(timezone.utc).strftime("%H:%M:%S"),
@@ -1100,7 +1114,7 @@ def dashboard() -> str:
             <div class="panel-head" id="head-decisions">{_html_escape(dec_head)}</div>
             <div class="panel-body table-wrap">
               <table style="min-width:640px;">
-                <thead><tr><th>ts</th><th>symbol</th><th>type</th><th>agent</th><th>action</th><th>allowed</th><th>why</th></tr></thead>
+                <thead><tr><th>ts</th><th>symbol</th><th>type</th><th>agent</th><th>action</th><th>allowed</th><th>why</th><th>hash</th></tr></thead>
                 <tbody id="tbody-decisions">{dec_rows}</tbody>
               </table>
             </div>

@@ -5,7 +5,7 @@
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**[English](README.md)** · **[Русский](README.ru.md)** · [Архитектура](docs/architecture.md) · [Риск](docs/risk-engine.md) · [API](docs/api-reference.md) · [Видео](docs/DEMO.md) · [Подача](docs/SUBMISSION.md) · [Лог сделок](docs/evidence/paper_trading_log.csv)
+**[English](README.md)** · **[Русский](README.ru.md)** · [Архитектура](docs/architecture.md) · [Риск](docs/risk-engine.md) · [API](docs/api-reference.md) · [Видео](docs/DEMO.md) · [Подача](docs/SUBMISSION.md) · [Лог сделок](docs/evidence/paper_trading_log.csv) · [Кладбище идей](docs/research-graveyard.md)
 
 Хакатон Bitget AI **S2**, трек **Agentic Trading**. Публичный OHLCV Bitget → сигналы RSI / level-cross → rules или LLM → риск-гейт → **Bitget UTA Demo** (`hub_demo`) + локальный paper shadow → дашборд FastAPI на `:8080`.
 
@@ -13,11 +13,19 @@
 
 Публичные свечи без ключей. **Ордера на Demo — ключи Bitget Demo в локальном `.env`, в git не коммитить.**
 
+## Тезис выходных
+
+S2: токенизированные акции и крипто-перпы торгуются **7×24**. Люди спят — стол нет.
+
+**Утверждение:** RSI-дивергенция + level-cross на одном ТФ `15m`, риск-гейт и сайз до стопа достаточны для автономного цикла **событие → решение → fill на Bitget Demo UTA** на выходных. Без бана единственного ТФ, без подмешивания paper-live PnL в Demo equity, без превращения агента в research-совет или on-chain аттестацию.
+
+rToken-перпы на выходных открыты (ATR 1h). Крипта остаётся на `15m`. `TF_BLOCKER_ENABLED=0`. Что отвергли: [docs/research-graveyard.md](docs/research-graveyard.md). Проверка лога решений: `python scripts/verify_decision_log.py`.
+
 | Слой | Этот стол |
 |------|-----------|
-| Исполнение | `hub_demo` — market + биржевые SL+TP2 на UTA Demo |
+| Исполнение | `hub_demo` — market **20×** (`HUB_LEVERAGE`) + биржевые SL+TP2 на UTA Demo |
 | Тень | Paper: ATR TP1 → стоп в безубыток + трейл |
-| Paper-live | `PAPER_FALLBACK=1` — нет пары на Demo → локальный fill; **этот PnL не складывать с Demo equity** |
+| Paper-live | `PAPER_FALLBACK=0` — скан всего Demo-каталога. `=1` снова включает локальный fill для имён вне Demo; **этот PnL не складывать с Demo equity** |
 | ТФ | только `15m`, `TF_BLOCKER_ENABLED=0` |
 | Агент | в `.env.example` — `rules`; живой стол — `llm` (Groq), при ошибке откат на rules |
 

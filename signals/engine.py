@@ -1,7 +1,46 @@
 """Signal engine — port of divergent bot_app/core/signal_engine.py"""
 
+from __future__ import annotations
+
+from typing import Any
+
 import pandas as pd
 from signals.divergence.detector import RSIDivergenceDetector
+
+
+def bar_ts_iso(df: pd.DataFrame, bar_index: int | None) -> str | None:
+    """UTC candle time at a positional bar_index. None if the frame has no clock."""
+    if bar_index is None or df is None or df.empty:
+        return None
+    try:
+        i = int(bar_index)
+    except (TypeError, ValueError):
+        return None
+    if i < 0 or i >= len(df):
+        return None
+    raw: Any = None
+    if isinstance(df.index, pd.DatetimeIndex):
+        raw = df.index[i]
+    else:
+        for col in ("timestamp", "ts", "time"):
+            if col in df.columns:
+                raw = df.iloc[i][col]
+                break
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return None
+    ts = pd.Timestamp(raw)
+    if pd.isna(ts):
+        return None
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _attach_bar_ts(signal: dict[str, Any], df: pd.DataFrame) -> dict[str, Any]:
+    signal["bar_ts"] = bar_ts_iso(df, signal.get("bar_index"))
+    return signal
 
 
 def run_full_detection(df: pd.DataFrame, pair_config: dict) -> tuple[dict | None, bool]:
@@ -33,39 +72,48 @@ def run_full_detection(df: pd.DataFrame, pair_config: dict) -> tuple[dict | None
     crossings = detector.detect_crossings(results)
     if crossings:
         cross = crossings[0]
-        return {
-            "type": cross["type"],
-            "bar_index": cross["bar_index"],
-            "price": float(df.iloc[-1]["close"]),
-            "level_price": float(cross["level_price"]),
-            "rsi": float(results.iloc[-1]["rsi"]),
-            "df": df,
-            "results": results,
-        }, has_zones
+        return _attach_bar_ts(
+            {
+                "type": cross["type"],
+                "bar_index": cross["bar_index"],
+                "price": float(df.iloc[-1]["close"]),
+                "level_price": float(cross["level_price"]),
+                "rsi": float(results.iloc[-1]["rsi"]),
+                "df": df,
+                "results": results,
+            },
+            df,
+        ), has_zones
 
     # Priority 2: New Divergence
     lookback_right = config["lookback_right"]
     for _, row in results.tail(lookback_right + 2).iloc[::-1].iterrows():
         if row["bullish_divergence"]:
-            return {
-                "type": "BULLISH_DIV",
-                "bar_index": int(row["bar_index"]),
-                "price": float(row["close"]),
-                "level_price": float(row["low"]),
-                "rsi": float(row["rsi"]),
-                "df": df,
-                "results": results,
-            }, has_zones
+            return _attach_bar_ts(
+                {
+                    "type": "BULLISH_DIV",
+                    "bar_index": int(row["bar_index"]),
+                    "price": float(row["close"]),
+                    "level_price": float(row["low"]),
+                    "rsi": float(row["rsi"]),
+                    "df": df,
+                    "results": results,
+                },
+                df,
+            ), has_zones
         if row["bearish_divergence"]:
-            return {
-                "type": "BEARISH_DIV",
-                "bar_index": int(row["bar_index"]),
-                "price": float(row["close"]),
-                "level_price": float(row["high"]),
-                "rsi": float(row["rsi"]),
-                "df": df,
-                "results": results,
-            }, has_zones
+            return _attach_bar_ts(
+                {
+                    "type": "BEARISH_DIV",
+                    "bar_index": int(row["bar_index"]),
+                    "price": float(row["close"]),
+                    "level_price": float(row["high"]),
+                    "rsi": float(row["rsi"]),
+                    "df": df,
+                    "results": results,
+                },
+                df,
+            ), has_zones
 
     return None, has_zones
 

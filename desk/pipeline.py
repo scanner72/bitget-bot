@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from agent.decide import decide
+from desk.decision_log import append_sealed_decision, ensure_session_id
+from exec.demo_universe import NotOnDemoError
 from exec.paper import PaperBook
 from exec.router import open_position
 from ingest.symbols import to_display
@@ -40,12 +41,12 @@ def default_proposed_size_usd() -> float:
 def append_decision(
     record: dict[str, Any],
     path: Path | str | None = None,
-) -> None:
+    *,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Append one sealed JSONL row (session/context/manifest_hash + SHA-256)."""
     out = Path(path) if path else DEFAULT_DECISIONS_PATH
-    out.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-    with out.open("a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    return append_sealed_decision(record, out, context=context)
 
 
 append_risk_decision = append_decision
@@ -65,6 +66,7 @@ def evaluate_candidate(
     Paper-only: never places live Bitget orders.
     """
     ctx = dict(context or {})
+    ctx.setdefault("session_id", ensure_session_id())
     if proposed_size_usd is not None:
         ctx["proposed_size_usd"] = float(proposed_size_usd)
 
@@ -229,6 +231,9 @@ def evaluate_candidate(
                 None,
             )
             fill_id = (match or {}).get("open_fill_id")
+        except NotOnDemoError as exc:
+            paper_error = f"not_on_demo:{exc}"
+            print(f"[HUB] SKIP not on demo: {exc}")
         except Exception as exc:  # noqa: BLE001
             paper_error = f"{type(exc).__name__}: {exc}"
             print(f"[PAPER] ERROR open failed: {paper_error}")
@@ -264,7 +269,7 @@ def evaluate_candidate(
         "reason": (risk_result.get("reason") if risk_result else agent_out.get("rationale")),
         "proposed_size_usd": size,
     }
-    append_decision(rec, decisions_path)
+    rec = append_decision(rec, decisions_path, context=ctx)
     return {
         "agent": agent_out,
         "risk": risk_result,

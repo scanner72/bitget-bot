@@ -11,11 +11,11 @@ Public Bitget OHLCV → RSI / level-cross → `agent.decide` (rules or llm) → 
 - `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`
 - Exchange SL+TP2 on open; soft TP1/BE/trail in `risk/exits.py`; `HUB_SYNC_EXCHANGE_SL=1`
 - Sizing from `.env.example`: `RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15` (code fallbacks 2/100 if unset)
-- `PAPER_FALLBACK=1` — paper-live ≠ Demo equity
+- `PAPER_FALLBACK=0` — scan and trade **Demo catalog only**. Opt-in `=1` is paper-live (not Demo equity)
 - `TF_BLOCKER_ENABLED=0`; pair blocker on
 - BTC: `BTC_REGIME_TF=1h`, EMA50 off — `.cursor/rules/btc-filters-policy.mdc`
 - `.env.example` `AGENT_MODE=rules`; running desk often `llm` (Groq `qwen/qwen3.6-27b`)
-- Leave exchange leverage at Bitget default
+- `HUB_LEVERAGE=20` on every hub open (`POST /api/v3/account/set-leverage`). Desk loop also bumps open 1x positions. `PAPER_LEVERAGE` stays 1 (size_usd is notional)
 
 ## Do not
 

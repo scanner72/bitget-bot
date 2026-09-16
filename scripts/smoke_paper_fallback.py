@@ -127,6 +127,101 @@ def main() -> int:
         _assert(pid2 == pos2["position_id"], pos2)
         _assert((pos2.get("meta") or {}).get("exec_reason") == "hub_25100", pos2)
 
+        from exec.demo_universe import NotOnDemoError, filter_to_demo_symbols
+
+        book3 = PaperBook(
+            fills_file=tdir / "fills3.jsonl",
+            positions_file=tdir / "positions3.json",
+            account=PaperAccount.load(
+                tdir / "paper_account3.json",
+                start_balance=10000.0,
+                persist=True,
+            ),
+        )
+        off_env = {
+            "EXEC_MODE": "hub_demo",
+            "BITGET_DEMO": "1",
+            "PAPER_FALLBACK": "0",
+        }
+        with patch.dict(os.environ, off_env, clear=False), patch.object(
+            router_mod, "symbol_tradable_on_demo", return_value=False
+        ), patch.object(router_mod, "exec_mode", return_value="hub_demo"), patch(
+            "exec.bitget_hub.BitgetUtaClient.from_env", BoomClient.from_env
+        ):
+            raised = False
+            try:
+                router_mod.open_position(
+                    symbol="ONDO/USDT:USDT",
+                    side="short",
+                    size_usd=100.0,
+                    price=0.80,
+                    meta={"atr": 0.01},
+                    book=book3,
+                )
+            except NotOnDemoError:
+                raised = True
+        _assert(raised, "demo-only must skip missing pairs")
+        _assert(book3.list_open() == [], book3.list_open())
+
+        book4 = PaperBook(
+            fills_file=tdir / "fills4.jsonl",
+            positions_file=tdir / "positions4.json",
+            account=PaperAccount.load(
+                tdir / "paper_account4.json",
+                start_balance=10000.0,
+                persist=True,
+            ),
+        )
+        with patch.dict(os.environ, off_env, clear=False), patch.object(
+            router_mod, "symbol_tradable_on_demo", return_value=True
+        ), patch.object(router_mod, "exec_mode", return_value="hub_demo"), patch(
+            "exec.bitget_hub.BitgetUtaClient.from_env", MissingClient.from_env
+        ), patch.object(router_mod, "drop_demo_symbol") as drop_off:
+            raised = False
+            try:
+                router_mod.open_position(
+                    symbol="XPL/USDT:USDT",
+                    side="short",
+                    size_usd=100.0,
+                    price=1.10,
+                    meta={"atr": 0.02},
+                    book=book4,
+                )
+            except NotOnDemoError:
+                raised = True
+        _assert(raised, "25100 without fallback must skip")
+        drop_off.assert_called()
+        _assert(book4.list_open() == [], book4.list_open())
+
+        with patch(
+            "exec.demo_universe.demo_tradable_symbols",
+            return_value={"BTCUSDT", "ETHUSDT"},
+        ):
+            kept = filter_to_demo_symbols(
+                ["BTC/USDT:USDT", "ONDO/USDT:USDT", "ETH/USDT:USDT"]
+            )
+        _assert(kept == ["BTC/USDT:USDT", "ETH/USDT:USDT"], kept)
+
+        from exec.demo_universe import bitget_id_to_ccxt, demo_scan_symbols
+
+        _assert(bitget_id_to_ccxt("BTCUSDT") == "BTC/USDT:USDT", "btc map")
+        _assert(bitget_id_to_ccxt("ETH/USDT:USDT") == "ETH/USDT:USDT", "passthrough")
+        with patch(
+            "exec.demo_universe.demo_tradable_symbols",
+            return_value={"ETHUSDT", "BTCUSDT", "XAGUSDT"},
+        ):
+            scan = demo_scan_symbols()
+        _assert(scan[0] == "BTC/USDT:USDT", scan)
+        _assert(scan == ["BTC/USDT:USDT", "ETH/USDT:USDT", "XAG/USDT:USDT"], scan)
+        with patch(
+            "exec.demo_universe.demo_tradable_symbols",
+            return_value={"ETHUSDT", "BTCUSDT", "BGTEST002USDT"},
+        ):
+            filtered = demo_scan_symbols(
+                public_markets={"BTC/USDT:USDT": {}, "ETH/USDT:USDT": {}}
+            )
+        _assert(filtered == ["BTC/USDT:USDT", "ETH/USDT:USDT"], filtered)
+
     print("smoke_paper_fallback OK")
     return 0
 

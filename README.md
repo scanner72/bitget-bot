@@ -5,7 +5,7 @@
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED.svg)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md) · [Evidence log](docs/evidence/paper_trading_log.csv)
+**[English](README.md)** · **[Русский](README.ru.md)** · [Architecture](docs/architecture.md) · [Risk](docs/risk-engine.md) · [API](docs/api-reference.md) · [Demo video](docs/DEMO.md) · [Submission](docs/SUBMISSION.md) · [Evidence log](docs/evidence/paper_trading_log.csv) · [Research graveyard](docs/research-graveyard.md)
 
 Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → RSI / level-cross signals → rules or LLM decide → risk gate → **Bitget UTA Demo** (`hub_demo`) + local paper shadow → FastAPI dashboard on `:8080`.
 
@@ -17,16 +17,36 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 
 | Piece | This desk |
 |-------|-----------|
-| Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close, exchange SL+TP2 |
+| Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close at `HUB_LEVERAGE=20`, exchange SL+TP2 |
 | Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
-| Paper-live | `PAPER_FALLBACK=1` — pairs missing on Demo fill locally; **do not add that PnL to Demo equity** |
-| Scan | USDT-M perps only (no spot). Top 70 crypto + top 30 rToken/RWA by 24h volume |
+| Scan | Full Bitget **Demo UTA** catalog (`hub_demo`). Public top-N is not used. `PAPER_FALLBACK=0` |
 | TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
 | Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
 | Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
 | BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
 
 Public candles need no keys. **Demo orders need Bitget Demo API keys in local `.env` (never commit).**
+
+---
+
+## Weekend thesis
+
+S2’s premise: tokenized US stocks and crypto perps trade **7×24**. Humans sleep; this desk does not.
+
+**Claim:** RSI-momentum divergence plus level-cross on a single `15m` book, gated by `risk/gate.py` and sized to stop, is enough to run an autonomous **event → decision → Bitget Demo UTA fill** loop through weekends — without banning the only timeframe, without mixing paper-live PnL into Demo equity, and without turning the agent into a research council or on-chain attester.
+
+rToken perps stay open on weekends (1h ATR, no crypto 2% floor). Crypto stays on `15m`. `TF_BLOCKER_ENABLED=0` so a dead 15m PnL cannot close the book. Pair blocker stays on.
+
+| Keep | Rejected — [research-graveyard](docs/research-graveyard.md) |
+|------|------|
+| `hub_demo` + paper shadow, `BITGET_ALLOW_LIVE=0` | Live mainnet |
+| SHA-256 decision JSONL + `session_id` / `context` / `manifest_hash` | Optic-style multi-agent debate, on-chain attestation |
+| `TF_BLOCKER_ENABLED=0` | 15m TF ban (it zeroed the desk) |
+| Demo catalog only (`PAPER_FALLBACK=0`) | Counting paper-live PnL as Demo equity |
+
+Verify a decision log: `python scripts/verify_decision_log.py` (uses [`docs/evidence/fixtures/decisions.hashed.jsonl`](docs/evidence/fixtures/decisions.hashed.jsonl)).
+
+---
 
 ```mermaid
 flowchart LR
@@ -54,6 +74,7 @@ flowchart LR
 | Max positions | `MAX_POSITIONS` | `15` |
 | Cooldown | `COOLDOWN_SEC` | `900` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
+| Hub leverage | `HUB_LEVERAGE` | `20` (exchange; `PAPER_LEVERAGE` stays 1 — size_usd is notional) |
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` (3 consecutive losses / WR 30 / 48h) |
 | TF blocker | `TF_BLOCKER_ENABLED` | `0` |
 
@@ -103,7 +124,7 @@ Offline smokes: `.\test.ps1` or `./test.sh`. Hub/Demo smokes need keys: `scripts
 | GET | `/health` | `{ ok, paper, exec_mode, hub_demo, bitget_demo, hub_sync_exchange_sl, paper_fallback, agent_mode, openai_model }` |
 | GET | `/positions` | `{ positions, count, source, total_unrealized_pnl, … }` |
 | GET | `/account` · `/equity` | Paper snapshot + Demo equity overlay when `hub_demo` |
-| GET | `/decisions?limit=50` | `{ decisions, count }` from `data/decisions.jsonl` |
+| GET | `/decisions?limit=50` | `{ decisions, count }` from `data/decisions.jsonl` (each row: `hash`, `prev_hash`, `session_id`, `context`, `manifest_hash`) |
 | GET | `/candidates?limit=50` | `{ candidates, count }` |
 | GET | `/fills?limit=50` | `{ fills, count, source }` |
 | GET | `/history?limit=40` | `{ trades, count }` |
@@ -148,6 +169,7 @@ python scripts/export_paper_log.py --from-sample    # tiny offline fixture, no k
 | `scripts/smoke_*.py` | Smokes |
 | `docs/DEMO.md` | 2–3 min recording script |
 | `docs/SUBMISSION.md` | GitHub / video / X / form checklist |
+| `docs/research-graveyard.md` | Rejected approaches (TF ban, debate/attestation, paper-live as Demo) |
 | `docs/evidence/` | Paper / Demo trading log (Track 1) |
 
 Compose services: `api` (`bitget-desk-api`) and `desk` (`bitget-desk-loop`), volume `./data`.
@@ -159,6 +181,8 @@ Compose services: `api` (`bitget-desk-api`) and `desk` (`bitget-desk-loop`), vol
 - Video: [docs/DEMO.md](docs/DEMO.md)
 - Submit checklist: [docs/SUBMISSION.md](docs/SUBMISSION.md)
 - Paper / Demo log: [docs/evidence/paper_trading_log.csv](docs/evidence/paper_trading_log.csv)
+- Decision hashes: `python scripts/verify_decision_log.py`
+- What we tried and dropped: [docs/research-graveyard.md](docs/research-graveyard.md)
 - Agent notes: [docs/CURSOR_HANDOFF.md](docs/CURSOR_HANDOFF.md)
 - Handbook: [bitget-ai.gitbook.io/bitgetai_hackathons2](https://bitget-ai.gitbook.io/bitgetai_hackathons2)
 

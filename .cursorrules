@@ -10,7 +10,7 @@ Python 3.11+, FastAPI, CCXT, public Bitget OHLCV, Demo UTA execution (`hub_demo`
 - Do not mutate `C:\divergent`.
 - `TF_BLOCKER_ENABLED=0` — do not ban `15m`. Pair blocker stays on.
 - `BTC_REGIME_TF=1h`, `BTC_EMA50_FILTER_ENABLED=0`. Policy: `.cursor/rules/btc-filters-policy.mdc`.
-- Paper-live (`PAPER_FALLBACK`) PnL is not Demo equity.
+- Paper-live (`PAPER_FALLBACK=1`) PnL is not Demo equity. Default is off — scan/trade Demo catalog only.
 
 ## Layout
 
