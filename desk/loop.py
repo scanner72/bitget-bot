@@ -30,6 +30,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from desk.candidate_log import CandidateLog, candidate_from_signal
+from desk.decision_log import ensure_session_id
 from desk.pipeline import evaluate_candidate
 from risk.gate import RiskGate
 from risk.exits import ExitConfig, check_open_exits
@@ -187,6 +188,7 @@ def process_symbol(
                     "timeframe": cfg.timeframe,
                     "ohlcv_df": df,
                     "ohlcv_limit": cfg.ohlcv_limit,
+                    "session_id": ensure_session_id(),
                 },
             )
             summary["action"] = out.get("action")
@@ -322,6 +324,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
     if cfg.scan_mode == "auto":
         cache = UniverseCache()
         set_shared_exchange(cache.exchange)
+    session_id = ensure_session_id()
     print(
         f"desk.loop start mode={mode} market_data={md_mode} scan={cfg.scan_mode} "
         f"tf={cfg.timeframe} "
@@ -329,7 +332,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
         f"crypto_top={cfg.scan_crypto_top} rtoken_top={cfg.scan_rtoken_top} "
         f"refresh={cfg.scan_refresh_sec}s "
         f"fixed_symbols={cfg.fixed_symbols} out={cfg.candidates_path} "
-        f"decisions={cfg.decisions_path}"
+        f"decisions={cfg.decisions_path} session={session_id}"
     )
     exit_cfg = ExitConfig.from_env()
     last_blocker_ts = 0.0

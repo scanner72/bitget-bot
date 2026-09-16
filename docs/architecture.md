@@ -23,11 +23,12 @@ flowchart LR
 | `ingest/bitget_ws.py`, `bitget_ohlcv.py`, `candle_cache.py` | Public WS candles/tickers (`MARKET_DATA_MODE=ws`) + REST bootstrap. No keys. Cache is the configured TF (`TIMEFRAME=15m`), not a 1m/5m/15m stack. |
 | `ingest/universe.py` | Auto-scan USDT-M swaps: crypto + rToken (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`) in paper/live. `hub_demo` scans the **full** Demo instrument catalog. |
 | `signals/engine.py`, `signals/divergence/` | Wilder RSI 14, swing pivots, `BULLISH_DIV` / `BEARISH_DIV` / `LEVEL_CROSS_*`. |
-| `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. |
+| `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. Decisions are hashed in `desk/decision_log.py`. |
 | `agent/decide.py` | `AGENT_MODE=rules` or `llm` (OpenAI-compatible). LLM errors → rules + `llm_fallback`. |
 | `risk/gate.py`, `sizing.py`, `exits.py`, `atr.py` | Limits, risk-to-SL notional, ATR SL/TP1/TP2, pair blocker. |
 | `exec/router.py`, `bitget_hub.py`, `paper.py` | `hub_demo` / `paper` / `live` (live needs `BITGET_ALLOW_LIVE=1`). |
 | `api/app.py` | Dashboard and JSON on port **8080**. |
+| `docs/research-graveyard.md` | Rejected approaches (not part of the running desk). |
 
 ## Execution modes
 

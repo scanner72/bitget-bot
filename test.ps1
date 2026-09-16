@@ -27,7 +27,8 @@ $smokes = @(
     "scripts/smoke_hub_leverage.py",
     "scripts/smoke_reconcile.py",
     "scripts/smoke_chart.py",
-    "scripts/smoke_export_paper_log.py"
+    "scripts/smoke_export_paper_log.py",
+    "scripts/verify_decision_log.py"
 )
 
 Write-Host "Smokes via $py"

@@ -44,7 +44,7 @@ Object, not a bare array (`exec/hub_view.py`):
 
 ## `GET /decisions?limit=50`
 
-`{ "decisions": [ ... ], "count": N }` — tail of `data/decisions.jsonl`.
+`{ "decisions": [ ... ], "count": N }` — tail of `data/decisions.jsonl`. Rows include agent/risk fields plus, after the S2 hardening pass: `session_id`, `context`, `manifest`, `manifest_hash`, `prev_hash`, `hash` (SHA-256 of canonical JSON with `hash` omitted). Verify a fixture with `python scripts/verify_decision_log.py`.
 
 ## `GET /candidates?limit=50`
 

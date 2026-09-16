@@ -162,6 +162,15 @@ def main() -> int:
         print(f"jsonl[1]={row1}")
         _assert(row0["agent"]["action"] == "ENTER" and row0["risk"]["allowed"] is True, row0)
         _assert(row1["agent"]["action"] == "SKIP" and row1["risk"] is None, row1)
+        _assert(row0.get("hash") and row0.get("session_id") and row0.get("manifest_hash"), row0)
+        _assert(isinstance(row0.get("context"), dict), row0)
+        _assert(row0.get("prev_hash") == "", row0)
+        _assert(row1.get("prev_hash") == row0["hash"], row1)
+        _assert(row0["session_id"] == row1["session_id"], row1)
+        from desk.decision_log import verify_jsonl
+
+        vr = verify_jsonl(decisions)
+        _assert(vr["ok"], vr)
 
     print("smoke_decide OK: ENTER + SKIP + pipeline JSONL chain")
     return 0

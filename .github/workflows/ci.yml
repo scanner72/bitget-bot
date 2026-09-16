@@ -41,6 +41,7 @@ jobs:
           python scripts/smoke_reconcile.py
           python scripts/smoke_chart.py
           python scripts/smoke_export_paper_log.py
+          python scripts/verify_decision_log.py
 
   compose:
     name: docker compose config

@@ -14,6 +14,27 @@ This folder is that log. **It is not live mainnet.**
 
 `BITGET_ALLOW_LIVE=0`. Runtime `data/*.jsonl` is gitignored and is never committed with keys.
 
+## Decision log (hashes)
+
+Every `data/decisions.jsonl` row written by `desk/pipeline.py` is sealed in `desk/decision_log.py`:
+
+| Field | Meaning |
+|-------|---------|
+| `hash` | SHA-256 of canonical JSON (`sort_keys`, no `hash` field) |
+| `prev_hash` | Previous row `hash` (empty on the first line) |
+| `session_id` | Desk process id (`DESK_SESSION_ID` or uuid) |
+| `context` | JSON-safe decide context (`timeframe`, `exec_mode`, `agent_mode`, …) — never OHLCV frames |
+| `manifest` / `manifest_hash` | Policy snapshot (exec/agent/risk/BTC flags). No secrets |
+
+Offline check (CI):
+
+```bash
+python scripts/verify_decision_log.py
+# docs/evidence/fixtures/decisions.hashed.jsonl
+```
+
+Not Ed25519, not on-chain. A one-byte edit of a sealed row fails verification.
+
 ## Public files (judges)
 
 | File | Role |
