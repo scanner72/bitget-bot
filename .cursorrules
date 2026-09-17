@@ -2,19 +2,26 @@
 
 Python 3.11+, FastAPI, CCXT, public Bitget OHLCV, Demo UTA execution (`hub_demo`).
 
+**Live config (user 2026-09-16) overrides v1 and all prior agent memory:** `.cursor/rules/desk-config.mdc` + `.env.example`.
+
 ## Safety
 
 - Default `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`. Do not enable live.
 - Never bypass `risk/gate.py`. Size with `risk/sizing.py`.
 - Do not commit `.env` or `data/*.jsonl` / `data/*.json`.
 - Do not mutate `C:\divergent`.
-- `TF_BLOCKER_ENABLED=0` — do not ban `15m`. Pair blocker stays on.
-- `BTC_REGIME_TF=1h`, `BTC_EMA50_FILTER_ENABLED=0`. Policy: `.cursor/rules/btc-filters-policy.mdc`.
+- `TF_BLOCKER_ENABLED=0`. Pair blocker stays on.
+- `TIMEFRAMES=15m,1h,4h` — do not collapse to 15m-only.
+- `RSI_LONG_MAX=0` — do not restore 30.
+- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` — no `LEVEL_CROSS_UP`.
+- `MAX_DAILY_LOSS_USD=150`, `MAX_SAME_DIRECTION_POSITIONS=4`.
+- rToken ATR: `RTOKEN_ATR_TF=1h`, floor 0, min 0.5%. Crypto keeps 2% ATR floor.
+- `BTC_REGIME_TF=4h`, `BTC_EMA50_FILTER_ENABLED=0`.
 - Paper-live (`PAPER_FALLBACK=1`) PnL is not Demo equity. Default is off — scan/trade Demo catalog only.
 
 ## Layout
 
-`ingest/` candles · `signals/` RSI div + level-cross · `desk/` loop · `agent/decide.py` · `risk/` · `exec/` router+hub+paper · `api/app.py` `:8080`.
+`ingest/` candles (multi-TF WS) · `signals/` RSI div + level-cross · `desk/` loop · `agent/decide.py` · `risk/` · `exec/` router+hub+paper · `api/app.py` `:8080`.
 
 ## Commands
 

@@ -55,6 +55,12 @@ def _env_bool(name: str, default: bool) -> bool:
     return v.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _timeframes() -> list[str]:
+    raw = (os.getenv("TIMEFRAMES") or os.getenv("TIMEFRAME") or "15m").strip()
+    tfs = [t.strip().lower() for t in raw.split(",") if t.strip()]
+    return tfs or ["15m"]
+
+
 def _json_default(obj: Any) -> Any:
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
@@ -120,8 +126,9 @@ def public_context(context: dict[str, Any] | None) -> dict[str, Any]:
         out.setdefault("exec_mode", exec_mode())
     except Exception:  # noqa: BLE001
         pass
-    tf = (os.getenv("TIMEFRAME") or "15m").strip() or "15m"
-    out.setdefault("timeframe", tf)
+    tfs = _timeframes()
+    out.setdefault("timeframe", tfs[0])
+    out.setdefault("timeframes", tfs)
     return out
 
 
@@ -130,21 +137,24 @@ def desk_manifest() -> dict[str, Any]:
     from agent.decide import _agent_mode
     from exec.router import exec_mode
 
+    tfs = _timeframes()
     allowed = (
-        os.getenv("ALLOWED_TYPES")
-        or "BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN"
+        os.getenv("ALLOWED_TYPES") or "BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN"
     ).strip()
     return {
         "schema": "bitget-desk-manifest-v1",
         "exec_mode": exec_mode(),
         "agent_mode": _agent_mode(),
-        "timeframe": (os.getenv("TIMEFRAME") or "15m").strip() or "15m",
+        "timeframe": tfs[0],
+        "timeframes": ",".join(tfs),
         "risk_usd_per_trade": _env_float("RISK_USD_PER_TRADE", 2.0),
         "max_notional_usd": _env_float("MAX_NOTIONAL_USD", 100.0),
         "min_notional_usd": _env_float("MIN_NOTIONAL_USD", 10.0),
         "max_positions": _env_int("MAX_POSITIONS", 15),
+        "max_same_direction": _env_int("MAX_SAME_DIRECTION_POSITIONS", 4),
+        "max_daily_loss_usd": _env_float("MAX_DAILY_LOSS_USD", 150.0),
         "hub_leverage": _env_int("HUB_LEVERAGE", 20),
-        "btc_regime_tf": (os.getenv("BTC_REGIME_TF") or "1h").strip() or "1h",
+        "btc_regime_tf": (os.getenv("BTC_REGIME_TF") or "4h").strip() or "4h",
         "btc_regime_enabled": _env_bool("BTC_REGIME_ENABLED", True),
         "btc_ema50_filter_enabled": _env_bool("BTC_EMA50_FILTER_ENABLED", False),
         "tf_blocker_enabled": _env_bool("TF_BLOCKER_ENABLED", False),
@@ -153,7 +163,7 @@ def desk_manifest() -> dict[str, Any]:
         "bitget_allow_live": _env_bool("BITGET_ALLOW_LIVE", False),
         "bitget_demo": _env_bool("BITGET_DEMO", True),
         "allowed_types": allowed,
-        "rsi_long_max": _env_float("RSI_LONG_MAX", 30.0),
+        "rsi_long_max": _env_float("RSI_LONG_MAX", 0.0),
         "allow_long": _env_bool("ALLOW_LONG", True),
         "allow_short": _env_bool("ALLOW_SHORT", True),
     }

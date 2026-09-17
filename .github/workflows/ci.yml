@@ -32,16 +32,20 @@ jobs:
           python scripts/smoke_paper.py
           python scripts/smoke_account.py
           python scripts/smoke_exits.py
+          python scripts/smoke_atr_rtoken.py
           python scripts/smoke_pair_blocker.py
           python scripts/smoke_symbols.py
           python scripts/smoke_upnl.py
           python scripts/smoke_tick_stops.py
           python scripts/smoke_paper_fallback.py
           python scripts/smoke_hub_leverage.py
+          python scripts/smoke_hub_price_scale.py
           python scripts/smoke_reconcile.py
           python scripts/smoke_chart.py
           python scripts/smoke_export_paper_log.py
           python scripts/verify_decision_log.py
+          python scripts/generate_s2_validation.py
+          git diff --exit-code -- docs/evidence/s2_validation.md docs/evidence/s2_validation.json
 
   compose:
     name: docker compose config

@@ -104,6 +104,10 @@ KNOWN_EQUITY_BASES: frozenset[str] = frozenset(
         "TENCENT",
         "XIAOMI",
         "SAMSUNG",
+        "SNDK",
+        "SKHY",
+        "SKHYNIX",
+        "SPCX",
         "SONY",
         "OPENAI",
         "ANTHROPIC",
@@ -193,6 +197,35 @@ def is_rtoken_perp(market: dict[str, Any]) -> bool:
         if any(tok in val for tok in ("stock", "rtoken", "rwa", "equity", "share")):
             return True
     return False
+
+
+def is_rtoken_symbol(symbol: str, market: dict[str, Any] | None = None) -> bool:
+    """True for Bitget stock/RWA perps when only a ccxt symbol is known.
+
+    Uses ``is_rtoken_perp(market)`` when a market row is passed; otherwise
+    STOCK suffix / ``KNOWN_EQUITY_BASES`` (same fallback as the universe split).
+    """
+    if market is not None:
+        return is_rtoken_perp(market)
+    raw = str(symbol or "").strip()
+    if not raw:
+        return False
+    # OHLCV ingest normally loaded ccxt markets before the candidate reaches
+    # the pipeline. Prefer that authoritative isRwa metadata over a ticker list.
+    try:
+        from ingest.bitget_ohlcv import get_shared_exchange
+
+        exchange = get_shared_exchange()
+        markets = getattr(exchange, "markets", None) or {}
+        loaded = markets.get(raw)
+        if isinstance(loaded, dict):
+            return is_rtoken_perp(loaded)
+    except Exception:
+        pass
+    base = raw.split("/")[0].split(":")[0].upper()
+    if base.endswith("STOCK"):
+        return True
+    return base in KNOWN_EQUITY_BASES
 
 
 def _quote_volume(ticker: dict[str, Any] | None) -> float:
@@ -362,6 +395,7 @@ __all__ = [
     "fetch_universe",
     "get_bitget_swap_exchange",
     "is_rtoken_perp",
+    "is_rtoken_symbol",
     "load_scan_env",
     "partition_swap_markets",
     "resolve_scan_symbols",

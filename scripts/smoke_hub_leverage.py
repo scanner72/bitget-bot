@@ -28,6 +28,7 @@ def _client():
 
 def main() -> int:
     from exec.bitget_hub import hub_leverage
+    from exec.router import sync_exchange_sl
 
     os.environ.pop("HUB_LEVERAGE", None)
     _assert(hub_leverage() == 20, hub_leverage())
@@ -125,6 +126,43 @@ def main() -> int:
     _assert(n == 1, n)
     _assert(len(sync_calls) == 1, sync_calls)
     _assert((sync_calls[0][2] or {}).get("symbol") == "SUIUSDT", sync_calls[0])
+
+    class StopClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def set_position_stop_loss(self, *args, **kwargs):
+            self.calls += 1
+            raise RuntimeError("exchange rejected stop")
+
+    stop_client = StopClient()
+    stop_pos = {
+        "symbol": "GOOGL/USDT:USDT",
+        "side": "long",
+        "tp2": 361.69,
+        "meta": {
+            "exec_venue": "hub",
+            "hub_sl_price": "337.51",
+            "hub_sl_order_id": "sl-1",
+        },
+    }
+    with patch.dict(
+        os.environ,
+        {"EXEC_MODE": "hub_demo", "BITGET_DEMO": "1", "HUB_SYNC_EXCHANGE_SL": "1"},
+        clear=False,
+    ), patch(
+        "exec.bitget_hub.BitgetUtaClient.from_env",
+        return_value=stop_client,
+    ):
+        first = sync_exchange_sl(stop_pos, 344.42, reason="be_timeout")
+        _assert(first is not None and first.get("hub_sl_sync_error"), first)
+        stop_pos["meta"].update(first)
+        second = sync_exchange_sl(stop_pos, 344.42, reason="be_timeout")
+        _assert(second is None, second)
+        _assert(stop_client.calls == 1, stop_client.calls)
+        third = sync_exchange_sl(stop_pos, 345.0, reason="trailing")
+        _assert(third is not None and third.get("hub_sl_sync_error"), third)
+        _assert(stop_client.calls == 2, stop_client.calls)
 
     print("smoke_hub_leverage OK")
     return 0

@@ -86,6 +86,7 @@ class RiskLimits:
     max_notional_usd: float = 100.0
     max_daily_loss_usd: float = 50.0
     max_positions: int = 15
+    max_same_direction: int = 4
     one_position_per_symbol: bool = True
     cooldown_sec: float = 900.0
     allowed_types: set[str] | None = None
@@ -95,6 +96,7 @@ class RiskLimits:
             "max_notional_usd": self.max_notional_usd,
             "max_daily_loss_usd": self.max_daily_loss_usd,
             "max_positions": self.max_positions,
+            "max_same_direction": self.max_same_direction,
             "one_position_per_symbol": self.one_position_per_symbol,
             "cooldown_sec": self.cooldown_sec,
             "allowed_types": sorted(self.allowed_types) if self.allowed_types else None,
@@ -107,6 +109,7 @@ class RiskLimits:
             max_notional_usd=_env_float("MAX_NOTIONAL_USD", 100.0),
             max_daily_loss_usd=_env_float("MAX_DAILY_LOSS_USD", 50.0),
             max_positions=max(0, _env_int("MAX_POSITIONS", 15)),
+            max_same_direction=max(0, _env_int("MAX_SAME_DIRECTION_POSITIONS", _env_int("CORRELATION_GUARD_MAX", 4))),
             one_position_per_symbol=_env_bool("ONE_POSITION_PER_SYMBOL", True),
             cooldown_sec=max(0.0, _env_float("COOLDOWN_SEC", 900.0)),
             allowed_types=_env_types("ALLOWED_TYPES"),
@@ -293,6 +296,33 @@ class RiskGate:
                 "limits": limits_snap,
             }
 
+        # Correlation guard: cap max open positions in the same direction (default 4)
+        if self.limits.max_same_direction > 0:
+            cand_side = str(candidate.get("side") or "").lower()
+            if not cand_side:
+                if ctype in {"BULLISH_DIV", "LEVEL_CROSS_DOWN"}:
+                    cand_side = "long"
+                elif ctype in {"BEARISH_DIV", "LEVEL_CROSS_UP"}:
+                    cand_side = "short"
+            if cand_side:
+                same_dir_count = 0
+                for p in self.state.open_positions:
+                    p_side = str(p.meta.get("side") or "").lower()
+                    if not p_side:
+                        p_type = str(p.meta.get("type") or "").upper()
+                        if p_type in {"BULLISH_DIV", "LEVEL_CROSS_DOWN"}:
+                            p_side = "long"
+                        elif p_type in {"BEARISH_DIV", "LEVEL_CROSS_UP"}:
+                            p_side = "short"
+                    if p_side == cand_side:
+                        same_dir_count += 1
+                if same_dir_count >= self.limits.max_same_direction:
+                    return {
+                        "allowed": False,
+                        "reason": f"correlation_guard:max_{cand_side}_positions({self.limits.max_same_direction})",
+                        "limits": limits_snap,
+                    }
+
         if self.limits.one_position_per_symbol and symbol in self.state.open_symbols():
             return {
                 "allowed": False,
@@ -323,9 +353,10 @@ class RiskGate:
                     "reason": f"pair_blocked:{block_reason}",
                     "limits": limits_snap,
                 }
+            raw_tf = os.getenv("TIMEFRAMES") or os.getenv("TIMEFRAME") or "15m"
             tf = str(
                 (candidate or {}).get("timeframe")
-                or os.getenv("TIMEFRAME", "15m")
+                or raw_tf.split(",")[0]
                 or "15m"
             ).strip()
             tf_blocked, tf_reason = is_timeframe_blocked(tf)

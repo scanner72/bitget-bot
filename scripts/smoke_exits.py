@@ -182,6 +182,13 @@ def main() -> int:
         print(f"Trail BE clamp: updates={t_upd}")
         if "sl" in t_upd:
             _assert(float(t_upd["sl"]) >= entry - 1e-9, t_upd)
+        unchanged = update_trailing_sl(
+            {**pos_d, "trail_price": 120.0, "trailing_active": True},
+            120.0,
+            99.0,
+            df_wide,
+        )
+        _assert(unchanged == {}, unchanged)
         # Simulate loss-side SL hit after tp1_hit must NOT be labeled trailing_hit
         pos_d_bad = dict(pos_d)
         pos_d_bad["sl"] = 98.0  # wrongly still below BE

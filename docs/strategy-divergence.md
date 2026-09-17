@@ -1,17 +1,19 @@
 # Signals
 
-Detector: `signals/engine.py` + `signals/divergence/detector.py`. Config: `signals/config.py`. Desk TF: **15m**.
+Detector: `signals/engine.py` + `signals/divergence/detector.py`. Config: `signals/config.py`. Desk TFs: **15m, 1h, 4h**.
 
 ## Types (`ALLOWED_TYPES`)
 
-| Type | Meaning |
-|------|---------|
-| `BULLISH_DIV` | Price lower low, RSI 14 higher low → long candidate |
-| `BEARISH_DIV` | Price higher high, RSI 14 lower high → short candidate |
-| `LEVEL_CROSS_UP` | Level-cross long |
-| `LEVEL_CROSS_DOWN` | Level-cross short |
+Live desk allows three. `LEVEL_CROSS_UP` still exists in the detector but is **not** in `ALLOWED_TYPES`.
 
-Pivots: lookback 5 bars each side (`DIV_LOOKBACK_LEFT/RIGHT`). Agent then applies `RSI_LONG_MAX=30` (no long if RSI above that), `RSI_OVERBOUGHT=70` / `RSI_OVERSOLD=30`, BTC regime/momentum, and the pair blocker.
+| Type | Side | On desk |
+|------|------|---------|
+| `BULLISH_DIV` | long | yes |
+| `BEARISH_DIV` | short | yes |
+| `LEVEL_CROSS_DOWN` | long (fade through bullish-div support) | yes |
+| `LEVEL_CROSS_UP` | short | no |
+
+Pivots: lookback 5 bars each side (`DIV_LOOKBACK_LEFT/RIGHT`). Agent applies `RSI_OVERBOUGHT=70` / `RSI_OVERSOLD=30`. **`RSI_LONG_MAX=0` (off)** — do not skip longs for mid RSI. Then BTC regime/momentum, correlation guard (max 4 same direction), and the pair blocker.
 
 ## After ENTER
 

@@ -67,7 +67,48 @@ async function fetchData() {
 const C_BULL = '#33c570';
 const C_BEAR = '#ae4ce6';
 
+function calcPriceFormat(candles, trade) {
+  const samples = [];
+  if (trade) {
+    [trade.entry, trade.sl, trade.tp1, trade.tp2, trade.exit].forEach(v => {
+      if (v && isFinite(v) && v > 0) samples.push(v);
+    });
+  }
+  if (candles && candles.length) {
+    const last = candles[candles.length - 1];
+    if (last && last.close) samples.push(last.close);
+    if (last && last.low) samples.push(last.low);
+  }
+  const refPrice = samples.length ? Math.min(...samples) : 1;
+
+  let precision = 2;
+  if (refPrice < 0.0001)      precision = 8;
+  else if (refPrice < 0.001)  precision = 7;
+  else if (refPrice < 0.01)   precision = 6;
+  else if (refPrice < 0.1)    precision = 5;
+  else if (refPrice < 1)      precision = 4;
+  else if (refPrice < 50)     precision = 4;
+  else                        precision = 2;
+
+  for (const s of samples) {
+    const sStr = s.toString();
+    let dec = 0;
+    if (sStr.includes('e-')) {
+      dec = parseInt(sStr.split('e-')[1], 10);
+    } else if (sStr.includes('.')) {
+      dec = sStr.split('.')[1].length;
+    }
+    if (dec > precision) {
+      precision = Math.min(dec, 8);
+    }
+  }
+
+  const minMove = Number(Math.pow(10, -precision).toFixed(precision));
+  return { precision, minMove };
+}
+
 function renderChart(data) {
+  const { precision, minMove } = calcPriceFormat(data.candles, trade);
   const theme = {
     layout:     { background: { color: '#030712' }, textColor: '#94a3b8' },
     grid:       { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
@@ -86,6 +127,11 @@ function renderChart(data) {
     upColor: '#26a69a', downColor: '#ef5350',
     borderUpColor: '#26a69a', borderDownColor: '#ef5350',
     wickUpColor: '#26a69a',   wickDownColor: '#ef5350',
+    priceFormat: {
+      type: 'price',
+      precision: precision,
+      minMove: minMove,
+    },
   });
   candleSeries.setData(data.candles);
 
@@ -152,7 +198,7 @@ function renderChart(data) {
         ? 'bg-green-900 text-green-300 px-2 py-0.5 rounded text-xs'
         : 'bg-red-900 text-red-300 px-2 py-0.5 rounded text-xs';
     } else {
-      badge.textContent = 'Позиция ' + dirLabel + ' @ ' + trade.entry.toPrecision(5);
+      badge.textContent = 'Позиция ' + dirLabel + ' @ ' + (trade.entry ? trade.entry.toFixed(precision) : '');
     }
     document.getElementById('hdr-tf').insertAdjacentElement('afterend', badge);
   }

@@ -1,171 +1,353 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<title>Bitget S2 Demo Snapshot — Divergent Agent Desk (paper)</title>
-<style>
-  body { font-family: ui-sans-serif, system-ui, Segoe UI, sans-serif; margin: 24px; background: #0b1220; color: #e8eef8; }
-  h1 { font-size: 1.35rem; margin: 0 0 8px; }
-  .meta { color: #9fb3d1; margin-bottom: 20px; font-size: 0.95rem; }
-  .badge { display: inline-block; background: #1a7f4b; color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 0.8rem; margin-right: 8px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-  section { background: #121a2b; border: 1px solid #243047; border-radius: 10px; padding: 12px 14px; }
-  h2 { font-size: 1rem; margin: 0 0 8px; color: #7dd3fc; }
-  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; line-height: 1.35; max-height: 360px; overflow: auto; color: #dce7f7; }
-  a { color: #93c5fd; }
-</style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Bitget Desk - Terminal</title>
+  <style>
+    :root {
+      --bg:#0b1118;
+      --panel:#111a24;
+      --panel-2:#0f1722;
+      --line:#223247;
+      --text:#dce6f3;
+      --muted:#8ea4bc;
+      --accent:#2f81f7;
+      --ok:#22a06b;
+      --bad:#d14f4f;
+      --warn:#c58a2c;
+    }
+    body { font-family: Inter, Segoe UI, system-ui, sans-serif; margin: 0; background:var(--bg); color:var(--text); }
+    .wrap { padding: 14px 16px 20px; }
+    .topbar {
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;
+      border:1px solid var(--line); background:var(--panel); border-radius:10px; padding:10px 12px;
+    }
+    .title { font-size: 1rem; font-weight: 650; letter-spacing: .2px; }
+    .chips, .hotkeys { display:flex; flex-wrap:wrap; gap:8px; }
+    .hotkeys { margin-top:8px; }
+    .chip {
+      font-size:.78rem; padding:.18rem .5rem; border:1px solid var(--line); border-radius:999px;
+      background:var(--panel-2); color:var(--muted);
+    }
+    .chip.accent { color:#cfe4ff; border-color:#245ea8; background:#13315a; }
+    .chip.ok { color:#c4f1dc; border-color:#2c6f56; }
+    .chip.warn { color:#f8e5be; border-color:#73501f; }
+    .hk {
+      display:inline-flex; align-items:center; gap:6px; font-size:.78rem; color:var(--text);
+      border:1px solid var(--line); background:#0d1622; border-radius:7px; padding:.28rem .55rem;
+      cursor:pointer; text-decoration:none;
+    }
+    .hk:hover { border-color:#3a5678; background:#132033; }
+    .hk kbd {
+      font:600 .68rem/1 ui-monospace, Consolas, monospace; color:#b7cceb;
+      border:1px solid #36506f; background:#152338; border-radius:4px; padding:.12rem .28rem;
+    }
+    .grid { display:grid; grid-template-columns: 2.1fr 1fr; gap:12px; }
+    .panel { border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+    .panel-head {
+      font-size:.82rem; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line); letter-spacing:.2px;
+      text-transform: uppercase;
+    }
+    .panel-body { padding:10px; }
+    .kpi { font-size:1.55rem; font-weight:700; margin: 2px 0 8px; color:#cde3ff; }
+    .meta { color:var(--muted); font-size:.82rem; line-height:1.45; }
+    .risk-ok { color:var(--ok); font-weight:600; }
+    .risk-bad { color:var(--bad); font-weight:600; }
+    .tabs {
+      display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px;
+    }
+    .tab {
+      display:inline-flex; align-items:center; gap:6px;
+      font-size:.8rem; font-weight:600; letter-spacing:.2px;
+      color:var(--muted); text-decoration:none;
+      border:1px solid var(--line); background:#0d1622; border-radius:8px;
+      padding:.38rem .7rem; cursor:pointer;
+    }
+    .tab:hover { border-color:#3a5678; background:#132033; color:var(--text); text-decoration:none; }
+    .tab.active {
+      color:#cfe4ff; border-color:#245ea8; background:#13315a;
+    }
+    .tab .count {
+      font-size:.68rem; font-weight:700; color:#b7cceb;
+      border:1px solid #36506f; background:#152338; border-radius:999px; padding:.08rem .38rem;
+    }
+    .tab-pane { display:none; }
+    .tab-pane.active { display:block; }
+    .tab-pane .table-wrap { max-height: calc(100vh - 280px); }
+    .table-wrap { overflow:auto; max-height: 360px; }
+    table { width:100%; border-collapse: separate; border-spacing:0; font-size:.83rem; min-width: 900px; }
+    th, td { text-align:left; padding:.42rem .5rem; border-bottom:1px solid var(--line); vertical-align:top; }
+    th {
+      color:var(--muted); font-weight:600; font-size:.76rem; text-transform:uppercase; letter-spacing:.25px;
+      position: sticky; top: 0; z-index: 2; background:#152233; box-shadow: 0 1px 0 var(--line);
+    }
+    tr:hover td { background:#102033; }
+    tr.row-link { cursor: pointer; }
+    tr.row-link:hover td { background:#163047; }
+    .sub { color:var(--muted); font-size:.72rem; }
+    .mono { font-family: ui-monospace, Consolas, monospace; font-size:.78rem; }
+    .tag {
+      display:inline-block; font-size:.72rem; font-weight:650; letter-spacing:.3px;
+      padding:.14rem .4rem; border-radius:5px; border:1px solid var(--line); background:#0e1722; color:var(--muted);
+    }
+    .tag.enter { color:#c4f1dc; border-color:#2c6f56; background:#123528; }
+    .tag.skip { color:#d3deea; border-color:#3a4d63; background:#172230; }
+    .tag.reduce { color:#f8e5be; border-color:#73501f; background:#2b2112; }
+    .tag.long { color:#c4f1dc; border-color:#2c6f56; background:#123528; }
+    .tag.short { color:#f3c4c4; border-color:#7a3535; background:#311919; }
+    .tag.ok { color:#c4f1dc; border-color:#2c6f56; background:#123528; }
+    .tag.bad { color:#f3c4c4; border-color:#7a3535; background:#311919; }
+    .tag.llm { color:#cfe4ff; border-color:#245ea8; background:#13315a; }
+    .footer { color:var(--muted); font-size:.78rem; margin-top:10px; }
+    .hint { color:var(--muted); font-size:.74rem; margin:0 0 10px; }
+    a { color:#6daefc; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    code { background:#0b141f; border:1px solid var(--line); padding:.08rem .3rem; border-radius:4px; }
+    .stack { display:grid; gap:12px; }
+    @media (max-width: 1200px) {
+      .grid { grid-template-columns:1fr; }
+      .table-wrap { max-height: none; }
+    }
+  </style>
 </head>
 <body>
-  <h1>Bitget S2 — Divergent Agent Desk (static snapshot)</h1>
-  <div class="meta">
-    <span class="badge">PAPER ONLY</span>
-    <span class="badge">Agent Trading</span>
-    Captured from <code>http://127.0.0.1:8080</code> for screenshot / demo pack.
-    Live dashboard: <a href="http://127.0.0.1:8080/">/</a>
-    · <a href="http://127.0.0.1:8080/health">/health</a>
-    · <a href="http://127.0.0.1:8080/positions">/positions</a>
-    · <a href="http://127.0.0.1:8080/decisions">/decisions</a>
-    · <a href="http://127.0.0.1:8080/fills">/fills</a>
-    · Scripts: <a href="../DEMO.md">DEMO.md</a> · <a href="../SUBMISSION.md">SUBMISSION.md</a>
-  </div>
-  <div class="grid">
-    <section>
-      <h2>GET /health</h2>
-      <pre>{
-    "ok":  true,
-    "paper":  true
-}</pre>
-    </section>
-    <section>
-      <h2>GET /candidates?limit=20</h2>
-      <pre>{
-    "candidates":  [
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="title">Bitget S2 Divergent Agent Desk</div>
+        <div class="meta">Execution terminal · live poll 8s · Demo PnL when hub mode · <span id="live-stamp">14:55:43 UTC</span></div>
+        <div class="hotkeys">
+          <a class="hk" href="#" id="btn-refresh" title="Refresh data (R)"><kbd>R</kbd> Refresh</a>
+          <a class="hk" href="#positions" title="Positions tab (P)"><kbd>P</kbd> Positions</a>
+          <a class="hk" href="#history" title="History tab (T)"><kbd>T</kbd> History</a>
+          <a class="hk" href="#decisions" title="Decisions tab (D)"><kbd>D</kbd> Decisions</a>
+          <a class="hk" href="#risk" title="Jump to risk (K)"><kbd>K</kbd> Risk</a>
+          <a class="hk" href="/health" target="_blank" rel="noopener" title="Open /health (H)"><kbd>H</kbd> Health</a>
+          <a class="hk" href="/equity" target="_blank" rel="noopener" title="Open /equity (E)"><kbd>E</kbd> Equity</a>
+        </div>
+      </div>
+      <div class="chips" id="chips">
+        <span class="chip accent">mode: hub_demo</span><span class="chip accent">agent: llm</span><span class="chip">qwen3.8-max</span><span class="chip ok">source: hub_demo</span><span class="chip ok">paper shadow: on</span><span class="chip ok">sync SL: true</span><span class="chip ok">risk kill: false</span><span class="chip">open: 2</span><span class="chip ok">paper-live: 0</span><span class="chip ok">paper ghosts: 0</span>
+      </div>
+    </div>
+    <p class="hint">Tabs: P positions · T history · D decisions. Click a position or history row for LIVE chart.</p>
 
-                   ],
-    "count":  0
-}</pre>
-    </section>
-    <section>
-      <h2>GET /positions</h2>
-      <pre>{
-    "positions":  [
-                      {
-                          "position_id":  "pos_abf778d678d2",
-                          "symbol":  "BTC/USDT:USDT",
-                          "side":  "long",
-                          "size_usd":  50.0,
-                          "qty":  0.0007692307692307692,
-                          "entry_price":  65000.0,
-                          "opened_ts":  "2026-09-08T16:09:55.874747+00:00",
-                          "open_fill_id":  "fill_790d9f5df797",
-                          "meta":  {
-                                       "type":  "BULLISH_DIV",
-                                       "rsi":  42.0,
-                                       "action":  "ENTER",
-                                       "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
-                                   }
-                      },
-                      {
-                          "position_id":  "pos_b1c37481162d",
-                          "symbol":  "BTC/USDT:USDT",
-                          "side":  "long",
-                          "size_usd":  50.0,
-                          "qty":  0.0007692307692307692,
-                          "entry_price":  65000.0,
-                          "opened_ts":  "2026-09-08T17:23:16.249630+00:00",
-                          "open_fill_id":  "fill_bdf6d460a46a",
-                          "meta":  {
-                                       "type":  "BULLISH_DIV",
-                                       "rsi":  42.0,
-                                       "action":  "ENTER",
-                                       "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
-                                   }
-                      }
-                  ],
-    "count":  2
-}</pre>
-    </section>
-    <section>
-      <h2>GET /decisions?limit=20</h2>
-      <pre>{
-    "decisions":  [
-                      {
-                          "ts":  "2026-09-08T16:03:45.282749+00:00",
-                          "symbol":  "BTC/USDT:USDT",
-                          "type":  "BULLISH_DIV",
-                          "price":  65000.0,
-                          "rsi":  45.0,
-                          "agent":  {
-                                        "action":  "ENTER",
-                                        "size_usd":  100.0,
-                                        "side":  "long",
-                                        "rationale":  "long ENTER on BULLISH_DIV rsi=45.0 size=100.00",
-                                        "rules_fired":  [
-                                                            "type:BULLISH_DIV",
-                                                            "bias_long",
-                                                            "size_fixed",
-                                                            "enter"
-                                                        ]
-                                    },
-                          "risk":  {
-                                       "allowed":  true,
-                                       "reason":  "ok",
-                                       "proposed_size_usd":  100.0
-                                   },
-                          "action":  "ENTER",
-                          "allowed":  true,
-                          "reason":  "ok",
-                          "proposed_size_usd":  100.0
-                      }
-                  ],
-    "count":  1
-}</pre>
-    </section>
-    <section style="grid-column: 1 / -1;">
-      <h2>GET /fills?limit=20</h2>
-      <pre>{
-    "fills":  [
-                  {
-                      "ts":  "2026-09-08T16:09:55.874747+00:00",
-                      "fill_id":  "fill_790d9f5df797",
-                      "position_id":  "pos_abf778d678d2",
-                      "event":  "open",
-                      "symbol":  "BTC/USDT:USDT",
-                      "side":  "long",
-                      "size_usd":  50.0,
-                      "qty":  0.0007692307692307692,
-                      "price":  65000.0,
-                      "realized_pnl":  0.0,
-                      "meta":  {
-                                   "type":  "BULLISH_DIV",
-                                   "rsi":  42.0,
-                                   "action":  "ENTER",
-                                   "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
-                               }
-                  },
-                  {
-                      "ts":  "2026-09-08T17:23:16.249630+00:00",
-                      "fill_id":  "fill_bdf6d460a46a",
-                      "position_id":  "pos_b1c37481162d",
-                      "event":  "open",
-                      "symbol":  "BTC/USDT:USDT",
-                      "side":  "long",
-                      "size_usd":  50.0,
-                      "qty":  0.0007692307692307692,
-                      "price":  65000.0,
-                      "realized_pnl":  0.0,
-                      "meta":  {
-                                   "type":  "BULLISH_DIV",
-                                   "rsi":  42.0,
-                                   "action":  "ENTER",
-                                   "rationale":  "long ENTER on BULLISH_DIV rsi=42.0 size=50.00"
-                               }
-                  }
-              ],
-    "count":  2
-}</pre>
-    </section>
+    <div class="tabs" role="tablist">
+      <a class="tab active" id="tab-positions" href="#positions" data-tab="positions">Open positions <span class="count" id="count-positions">2</span></a>
+      <a class="tab" id="tab-history" href="#history" data-tab="history">Trade history <span class="count" id="count-history">30</span></a>
+      <a class="tab" id="tab-decisions" href="#decisions" data-tab="decisions">Decisions <span class="count" id="count-decisions">20</span></a>
+    </div>
+
+    <div class="grid">
+      <div class="stack">
+        <div class="tab-pane active" id="pane-positions">
+          <div class="panel" id="panel-positions">
+            <div class="panel-head" id="head-positions">Open positions (2) · click for LIVE chart</div>
+            <div class="panel-body table-wrap">
+              <table>
+                <thead><tr><th>symbol</th><th>side</th><th>qty / notional / margin</th><th>entry</th><th>mark</th><th>uPnL</th><th>id</th><th>SL (exch)</th><th>TP1 bot</th><th>TP2 (exch)</th><th>sync</th></tr></thead>
+                <tbody id="tbody-positions"><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=BTC%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=76661.4&amp;sl=75138.814&amp;tp1=78945.279&amp;tp2=80467.86499999999&amp;dir=long&amp;opened=2026-09-17T14%3A45%3A35.787186%2B00%3A00','_blank')"><td>BTC-USDT Perp<br/><span class='sub'>BTCUSDT</span></td><td><span class="tag long">long</span></td><td>qty 0.0065<br/>notional $497.94<br/>margin $25.39 @ 20x<br/>target $500</td><td>76661.4</td><td>76606.0</td><td style="color:#d14f4f;font-weight:600">-0.3601</td><td class='mono'>pos_51698ac12741</td><td class='mono'>75138.8</td><td class='mono'>78945.279</td><td class='mono'>80467.9</td><td><span class='tag ok'>hub</span></td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=GOOGL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=344.42&amp;sl=344.42&amp;tp1=354.7823&amp;tp2=361.69050000000004&amp;dir=long&amp;opened=2026-09-16T18%3A45%3A30.406338%2B00%3A00','_blank')"><td>GOOGL-USDT Perp<br/><span class='sub'>GOOGLUSDT</span></td><td><span class="tag long">long</span></td><td>qty 1.44<br/>notional $496.54<br/>margin $25.32 @ 20x<br/>target $500</td><td>344.42</td><td>344.82</td><td style="color:#22a06b;font-weight:600">0.5760</td><td class='mono'>pos_db6ffcecfc09</td><td class='mono'>337.51</td><td class='mono'>354.7823</td><td class='mono'>361.69</td><td><span class='tag ok'>hub</span></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="pane-history">
+          <div class="panel" id="panel-history">
+            <div class="panel-head" id="head-history">Trade history (30) · click for LIVE chart</div>
+            <div class="panel-body table-wrap">
+              <table>
+                <thead><tr><th>closed</th><th>symbol</th><th>side</th><th>entry</th><th>exit</th><th>pnl</th><th>status</th><th>venue</th><th>type</th></tr></thead>
+                <tbody id="tbody-history"><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=COIN%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=168.99&amp;sl=167.34&amp;tp1=171.465&amp;tp2=173.115&amp;dir=long&amp;opened=2026-09-17T14%3A45%3A11.614083%2B00%3A00&amp;exit=169.73&amp;closed=2026-09-17T14%3A45%3A46.206472%2B00%3A00&amp;pnl=2.189478667376732&amp;reason=sl_hit','_blank')"><td class='mono'>09-17 14:45</td><td>COIN-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>168.99</td><td class='mono'>169.73</td><td style="color:#22a06b;font-weight:600">2.1895</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=LTC%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=54.727765957447&amp;sl=53.676365957447&amp;tp1=56.304865957447&amp;tp2=57.356265957447&amp;dir=long&amp;opened=2026-09-17T14%3A45%3A23.236093%2B00%3A00&amp;exit=53.09&amp;closed=2026-09-17T14%3A45%3A44.961990%2B00%3A00&amp;pnl=-14.96284316374634&amp;reason=sl_hit','_blank')"><td class='mono'>09-17 14:45</td><td>LTC-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>54.727765957447</td><td class='mono'>53.09</td><td style="color:#d14f4f;font-weight:600">-14.9628</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SHIB%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=5.031e-06&amp;sl=5.135357142857143e-06&amp;tp1=5.18061e-06&amp;tp2=5.280349999999999e-06&amp;dir=long&amp;opened=2026-09-17T07%3A00%3A40.300218%2B00%3A00&amp;exit=5.135357142857143e-06&amp;closed=2026-09-17T14%3A27%3A53.947602%2B00%3A00&amp;pnl=10.371411534202256&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 14:27</td><td>SHIB-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>5.031e-06</td><td class='mono'>5.135357142857143e-06</td><td style="color:#22a06b;font-weight:600">10.3714</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SKHY%2FUSDT%3AUSDT&amp;timeframe=4h&amp;entry=179.63&amp;sl=183.80178571428573&amp;tp1=184.8794&amp;tp2=188.379&amp;dir=long&amp;opened=2026-09-17T12%3A00%3A38.524483%2B00%3A00&amp;exit=183.80178571428573&amp;closed=2026-09-17T13%3A35%3A11.054430%2B00%3A00&amp;pnl=11.612163097160067&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 13:35</td><td>SKHY-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>179.63</td><td class='mono'>183.80178571428573</td><td style="color:#22a06b;font-weight:600">11.6122</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SNDK%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=1540.12&amp;sl=1575.31&amp;tp1=1586.1012999999998&amp;tp2=1616.7555&amp;dir=long&amp;opened=2026-09-17T07%3A30%3A13.299870%2B00%3A00&amp;exit=1575.31&amp;closed=2026-09-17T13%3A31%3A23.553186%2B00%3A00&amp;pnl=11.424434459652467&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 13:31</td><td>SNDK-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>1540.12</td><td class='mono'>1575.31</td><td style="color:#22a06b;font-weight:600">11.4244</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=COIN%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=167.13&amp;sl=168.53435000000002&amp;tp1=169.31678571428571&amp;tp2=170.77464285714285&amp;dir=long&amp;opened=2026-09-17T07%3A00%3A21.712713%2B00%3A00&amp;exit=168.53435000000002&amp;closed=2026-09-17T08%3A20%3A44.455732%2B00%3A00&amp;pnl=4.201370190869413&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 08:20</td><td>COIN-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>167.13</td><td class='mono'>168.53435000000002</td><td style="color:#22a06b;font-weight:600">4.2014</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=LTC%2FUSDT%3AUSDT&amp;timeframe=4h&amp;entry=51.65&amp;sl=50.6334&amp;tp1=53.1749&amp;tp2=54.1915&amp;dir=long&amp;opened=2026-09-17T04%3A00%3A12.606822%2B00%3A00&amp;exit=54.02&amp;closed=2026-09-17T06%3A42%3A34.615865%2B00%3A00&amp;pnl=22.515&amp;reason=exchange_closed','_blank')"><td class='mono'>09-17 06:42</td><td>LTC-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>51.65</td><td class='mono'>54.02</td><td style="color:#22a06b;font-weight:600">22.5150</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=LINK%2FUSDT%3AUSDT&amp;timeframe=1h&amp;entry=10.937&amp;sl=10.723519999999999&amp;tp1=11.25722&amp;tp2=11.470699999999999&amp;dir=long&amp;opened=2026-09-16T20%3A00%3A14.124388%2B00%3A00&amp;exit=11.071821428571429&amp;closed=2026-09-17T04%3A58%3A27.027998%2B00%3A00&amp;pnl=6.16354706827414&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 04:58</td><td>LINK-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>10.937</td><td class='mono'>11.071821428571429</td><td style="color:#22a06b;font-weight:600">6.1635</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=CRCL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=80.53&amp;sl=78.94428571428571&amp;tp1=82.90857142857143&amp;tp2=84.49428571428572&amp;dir=long&amp;opened=2026-09-16T20%3A00%3A33.229157%2B00%3A00&amp;exit=81.85&amp;closed=2026-09-17T04%3A07%3A24.775040%2B00%3A00&amp;pnl=8.1444&amp;reason=exchange_closed','_blank')"><td class='mono'>09-17 04:07</td><td>CRCL-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>80.53</td><td class='mono'>81.85</td><td style="color:#22a06b;font-weight:600">8.1444</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=LTC%2FUSDT%3AUSDT&amp;timeframe=1h&amp;entry=50.611224489796&amp;sl=49.606024489796&amp;tp1=52.119024489796004&amp;tp2=53.124224489796&amp;dir=long&amp;opened=2026-09-16T19%3A00%3A47.292364%2B00%3A00&amp;exit=51.84607142857143&amp;closed=2026-09-17T01%3A37%3A20.754227%2B00%3A00&amp;pnl=12.199338696343794&amp;reason=trailing_hit','_blank')"><td class='mono'>09-17 01:37</td><td>LTC-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>50.611224489796</td><td class='mono'>51.84607142857143</td><td style="color:#22a06b;font-weight:600">12.1993</td><td class='sub'>trailing_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SKHY%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=176.72&amp;sl=173.191&amp;tp1=182.0135&amp;tp2=185.5425&amp;dir=long&amp;opened=2026-09-16T18%3A30%3A13.087851%2B00%3A00&amp;exit=173.29&amp;closed=2026-09-16T19%3A19%3A44.912479%2B00%3A00&amp;pnl=-9.704617473970167&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 19:19</td><td>SKHY-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>176.72</td><td class='mono'>173.29</td><td style="color:#d14f4f;font-weight:600">-9.7046</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SHIB%2FUSDT%3AUSDT&amp;timeframe=1h&amp;entry=4.867e-06&amp;sl=4.77178e-06&amp;tp1=5.00983e-06&amp;tp2=5.10505e-06&amp;dir=long&amp;opened=2026-09-16T19%3A01%3A17.177775%2B00%3A00&amp;exit=4.829e-06&amp;closed=2026-09-16T19%3A01%3A50.301161%2B00%3A00&amp;pnl=-3.9038422025888773&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 19:01</td><td>SHIB-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>4.867e-06</td><td class='mono'>4.829e-06</td><td style="color:#d14f4f;font-weight:600">-3.9038</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=UNI%2FUSDT%3AUSDT&amp;timeframe=1h&amp;entry=6.407&amp;sl=6.265428571428571&amp;tp1=6.619357142857143&amp;tp2=6.760928571428572&amp;dir=long&amp;opened=2026-09-16T19%3A00%3A36.492299%2B00%3A00&amp;exit=6.373&amp;closed=2026-09-16T19%3A01%3A06.975932%2B00%3A00&amp;pnl=-2.2659216229977965&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 19:01</td><td>UNI-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>6.407</td><td class='mono'>6.373</td><td style="color:#d14f4f;font-weight:600">-2.2659</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=XRP%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=1.2905&amp;sl=1.265408&amp;tp1=1.328138&amp;tp2=1.35323&amp;dir=long&amp;opened=2026-09-16T18%3A45%3A11.354315%2B00%3A00&amp;exit=1.2897&amp;closed=2026-09-16T18%3A46%3A42.969581%2B00%3A00&amp;pnl=-0.30995738086009306&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 18:46</td><td>XRP-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>1.2905</td><td class='mono'>1.2897</td><td style="color:#d14f4f;font-weight:600">-0.3100</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SOL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=98.418&amp;sl=96.49342&amp;tp1=101.30487000000001&amp;tp2=103.22945&amp;dir=long&amp;opened=2026-09-16T18%3A45%3A20.660518%2B00%3A00&amp;exit=98.342&amp;closed=2026-09-16T18%3A46%3A42.244064%2B00%3A00&amp;pnl=-0.3861082322340047&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 18:46</td><td>SOL-USDT Perp</td><td><span class="tag long">long</span></td><td class='mono'>98.418</td><td class='mono'>98.342</td><td style="color:#d14f4f;font-weight:600">-0.3861</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BULLISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=TRX%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=0.33528&amp;sl=0.34197920000000004&amp;tp1=0.3252312&amp;tp2=0.31853200000000004&amp;dir=short&amp;opened=2026-09-16T09%3A30%3A13.747597%2B00%3A00&amp;exit=0.33563&amp;closed=2026-09-16T12%3A36%3A32.287530%2B00%3A00&amp;pnl=-0.5222&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>TRX-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>0.33528</td><td class='mono'>0.33563</td><td style="color:#d14f4f;font-weight:600">-0.5222</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=GOOGL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=344.08&amp;sl=350.99399999999997&amp;tp1=333.709&amp;tp2=326.79499999999996&amp;dir=short&amp;opened=2026-09-16T08%3A45%3A12.849222%2B00%3A00&amp;exit=345.35&amp;closed=2026-09-16T12%3A36%3A31.850104%2B00%3A00&amp;pnl=-1.8288&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>GOOGL-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>344.08</td><td class='mono'>345.35</td><td style="color:#d14f4f;font-weight:600">-1.8288</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=TSLA%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=357.05&amp;sl=364.22180000000003&amp;tp1=346.2923&amp;tp2=339.1205&amp;dir=short&amp;opened=2026-09-16T08%3A30%3A46.129699%2B00%3A00&amp;exit=358.31&amp;closed=2026-09-16T12%3A36%3A31.490520%2B00%3A00&amp;pnl=-1.7514&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>TSLA-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>357.05</td><td class='mono'>358.31</td><td style="color:#d14f4f;font-weight:600">-1.7514</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SNDK%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=1540.5&amp;sl=1571.4878&amp;tp1=1494.0183&amp;tp2=1463.0305&amp;dir=short&amp;opened=2026-09-16T08%3A30%3A37.278049%2B00%3A00&amp;exit=1547.46&amp;closed=2026-09-16T12%3A36%3A31.117435%2B00%3A00&amp;pnl=-2.2272&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>SNDK-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>1540.5</td><td class='mono'>1547.46</td><td style="color:#d14f4f;font-weight:600">-2.2272</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=XAG%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=64.57&amp;sl=65.868&amp;tp1=62.62299999999999&amp;tp2=61.324999999999996&amp;dir=short&amp;opened=2026-09-16T08%3A30%3A13.999531%2B00%3A00&amp;exit=64.7&amp;closed=2026-09-16T12%3A36%3A30.747085%2B00%3A00&amp;pnl=-1.001&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>XAG-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>64.57</td><td class='mono'>64.7</td><td style="color:#d14f4f;font-weight:600">-1.0010</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=NDX100%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=29055.0&amp;sl=29637.58&amp;tp1=28181.13&amp;tp2=27598.55&amp;dir=short&amp;opened=2026-09-16T08%3A15%3A29.568625%2B00%3A00&amp;exit=29117.0&amp;closed=2026-09-16T12%3A36%3A30.346083%2B00%3A00&amp;pnl=-1.0602&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>NDX100-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>29055.0</td><td class='mono'>29117.0</td><td style="color:#d14f4f;font-weight:600">-1.0602</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=CRCL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=85.0&amp;sl=86.7154&amp;tp1=82.4269&amp;tp2=80.7115&amp;dir=short&amp;opened=2026-09-16T08%3A00%3A14.162948%2B00%3A00&amp;exit=85.94&amp;closed=2026-09-16T12%3A36%3A29.983631%2B00%3A00&amp;pnl=-5.4708&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>CRCL-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>85.0</td><td class='mono'>85.94</td><td style="color:#d14f4f;font-weight:600">-5.4708</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SKHY%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=178.68&amp;sl=182.2876&amp;tp1=173.2686&amp;tp2=169.661&amp;dir=short&amp;opened=2026-09-16T07%3A15%3A42.734501%2B00%3A00&amp;exit=180.69&amp;closed=2026-09-16T12%3A36%3A29.631910%2B00%3A00&amp;pnl=-5.5677&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>SKHY-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>178.68</td><td class='mono'>180.69</td><td style="color:#d14f4f;font-weight:600">-5.5677</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=BTC%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=75880.6&amp;sl=77399.746&amp;tp1=73601.88100000001&amp;tp2=72082.735&amp;dir=short&amp;opened=2026-09-16T07%3A15%3A33.000177%2B00%3A00&amp;exit=75967.4&amp;closed=2026-09-16T12%3A36%3A29.271628%2B00%3A00&amp;pnl=-0.5642&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>BTC-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>75880.6</td><td class='mono'>75967.4</td><td style="color:#d14f4f;font-weight:600">-0.5642</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=LINK%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=10.777&amp;sl=10.994299999999999&amp;tp1=10.451049999999999&amp;tp2=10.233749999999999&amp;dir=short&amp;opened=2026-09-16T07%3A15%3A14.482366%2B00%3A00&amp;exit=10.829&amp;closed=2026-09-16T12%3A36%3A28.835389%2B00%3A00&amp;pnl=-2.392&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>LINK-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>10.777</td><td class='mono'>10.829</td><td style="color:#d14f4f;font-weight:600">-2.3920</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SP500%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=7601.3&amp;sl=7753.418000000001&amp;tp1=7373.1230000000005&amp;tp2=7221.005&amp;dir=short&amp;opened=2026-09-16T05%3A30%3A31.995788%2B00%3A00&amp;exit=7613.9&amp;closed=2026-09-16T12%3A36%3A28.180330%2B00%3A00&amp;pnl=-0.82782&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>SP500-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>7601.3</td><td class='mono'>7613.9</td><td style="color:#d14f4f;font-weight:600">-0.8278</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=SPCX%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=144.28&amp;sl=147.1658&amp;tp1=139.9513&amp;tp2=137.06550000000001&amp;dir=short&amp;opened=2026-09-16T05%3A30%3A22.021829%2B00%3A00&amp;exit=144.83&amp;closed=2026-09-16T12%3A36%3A27.775314%2B00%3A00&amp;pnl=-1.903&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>SPCX-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>144.28</td><td class='mono'>144.83</td><td style="color:#d14f4f;font-weight:600">-1.9030</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=ETH%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=2405.39&amp;sl=2453.4572&amp;tp1=2333.2891999999997&amp;tp2=2285.2219999999998&amp;dir=short&amp;opened=2026-09-16T05%3A30%3A11.487260%2B00%3A00&amp;exit=2409.89&amp;closed=2026-09-16T12%3A36%3A27.405047%2B00%3A00&amp;pnl=-0.9&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>ETH-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>2405.39</td><td class='mono'>2409.89</td><td style="color:#d14f4f;font-weight:600">-0.9000</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=AAPL%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=332.19&amp;sl=338.8186&amp;tp1=322.2471&amp;tp2=315.6185&amp;dir=short&amp;opened=2026-09-15T21%3A00%3A12.153512%2B00%3A00&amp;exit=332.15&amp;closed=2026-09-16T12%3A36%3A27.031884%2B00%3A00&amp;pnl=0.06&amp;reason=exchange_closed','_blank')"><td class='mono'>09-16 12:36</td><td>AAPL-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>332.19</td><td class='mono'>332.15</td><td style="color:#22a06b;font-weight:600">0.0600</td><td class='sub'>exchange_closed</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr><tr class='row-link' title='Open LIVE chart' onclick="window.open('/chart?symbol=NVDA%2FUSDT%3AUSDT&amp;timeframe=15m&amp;entry=215.15&amp;sl=219.435&amp;tp1=208.7225&amp;tp2=204.4375&amp;dir=short&amp;opened=2026-09-16T08%3A30%3A26.025125%2B00%3A00&amp;exit=219.38&amp;closed=2026-09-16T12%3A35%3A23.487489%2B00%3A00&amp;pnl=-9.830350917964136&amp;reason=sl_hit','_blank')"><td class='mono'>09-16 12:35</td><td>NVDA-USDT Perp</td><td><span class="tag short">short</span></td><td class='mono'>215.15</td><td class='mono'>219.38</td><td style="color:#d14f4f;font-weight:600">-9.8304</td><td class='sub'>sl_hit</td><td><span class='tag ok'>hub</span></td><td class='sub'>BEARISH_DIV</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="pane-decisions">
+          <div class="panel" id="panel-decisions">
+            <div class="panel-head" id="head-decisions">Decision timeline (20) · SHA-256</div>
+            <div class="panel-body table-wrap">
+              <table style="min-width:640px;">
+                <thead><tr><th>ts</th><th>symbol</th><th>type</th><th>agent</th><th>action</th><th>allowed</th><th>why</th><th>hash</th></tr></thead>
+                <tbody id="tbody-decisions"><tr><td class='mono'>14:45:42</td><td>XRP-USDT Perp<br/><span class='sub'>XRPUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=44.68 size=500.00 | hash=a9bb367d643b54c8bca5c6f9338fb672ef6087c42c08940651edb26d81c59ce3'>long ENTER on BULLISH_DIV rsi=44.68 size=500.00</td><td class='mono' title='a9bb367d643b54c8bca5c6f9338fb672ef6087c42c08940651edb26d81c59ce3 session=0c9032dedbb745c09f1b4b4bcccf8c77'>a9bb367d<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:45:35</td><td>BTC-USDT Perp<br/><span class='sub'>BTCUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag ok">ALLOW</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=41.73 size=500.00 | hash=d875738d64931c2fc2c4f4e3b19cf161d4d617fc6ab6aff0cd9a5c1e3ab73281'>long ENTER on BULLISH_DIV rsi=41.73 size=500.00</td><td class='mono' title='d875738d64931c2fc2c4f4e3b19cf161d4d617fc6ab6aff0cd9a5c1e3ab73281 session=0c9032dedbb745c09f1b4b4bcccf8c77'>d875738d<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:45:23</td><td>LTC-USDT Perp<br/><span class='sub'>LTCUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag ok">ALLOW</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=39.43 size=500.00 | hash=3e8ceab624622fea935185e005fe996fe8da0d6f305285ef2b13792490f74dda'>long ENTER on BULLISH_DIV rsi=39.43 size=500.00</td><td class='mono' title='3e8ceab624622fea935185e005fe996fe8da0d6f305285ef2b13792490f74dda session=0c9032dedbb745c09f1b4b4bcccf8c77'>3e8ceab6<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:45:11</td><td>COIN-USDT Perp<br/><span class='sub'>COINUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag ok">ALLOW</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=41.9 size=500.00 | hash=7f1d5b0076c4048f6d1fbbf5df9fb564b74750f23fb715dd6b4a28f18109d353'>long ENTER on BULLISH_DIV rsi=41.9 size=500.00</td><td class='mono' title='7f1d5b0076c4048f6d1fbbf5df9fb564b74750f23fb715dd6b4a28f18109d353 session=0c9032dedbb745c09f1b4b4bcccf8c77'>7f1d5b00<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:30:18</td><td>GOOGL-USDT Perp<br/><span class='sub'>GOOGLUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=a7954f01c96ea4237252601fe437dafacbfa32b24e6ddb006d23aa26f5deb245'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='a7954f01c96ea4237252601fe437dafacbfa32b24e6ddb006d23aa26f5deb245 session=0c9032dedbb745c09f1b4b4bcccf8c77'>a7954f01<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:30:10</td><td>AAPL-USDT Perp<br/><span class='sub'>AAPLUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=872c063a12621378a4269e0ea1a07359036d697399f72c36cd394662becddfdf'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='872c063a12621378a4269e0ea1a07359036d697399f72c36cd394662becddfdf session=0c9032dedbb745c09f1b4b4bcccf8c77'>872c063a<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>14:00:11</td><td>ADA-USDT Perp<br/><span class='sub'>ADAUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=ca338e07c96c5dae13a1403be8677d7f323cf9ab2fe48aa7007fba7bba0028db'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='ca338e07c96c5dae13a1403be8677d7f323cf9ab2fe48aa7007fba7bba0028db session=0c9032dedbb745c09f1b4b4bcccf8c77'>ca338e07<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:45:16</td><td>NEAR-USDT Perp<br/><span class='sub'>NEARUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=7727ffc3c0367ed943020a5540924eac1ea4e6944c6dba69a96eb8b71d526b80'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='7727ffc3c0367ed943020a5540924eac1ea4e6944c6dba69a96eb8b71d526b80 session=0c9032dedbb745c09f1b4b4bcccf8c77'>7727ffc3<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:45:09</td><td>DOT-USDT Perp<br/><span class='sub'>DOTUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=4410031a59fc02d79ce8e0c68b0f40052258a1dd70cf5494d47d4dda945ed444'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='4410031a59fc02d79ce8e0c68b0f40052258a1dd70cf5494d47d4dda945ed444 session=0c9032dedbb745c09f1b4b4bcccf8c77'>4410031a<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:30:30</td><td>SPCX-USDT Perp<br/><span class='sub'>SPCXUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=d1dea435d8c81054cc72be070158dae77e96e8657912f7d4bbf0c987b387191c'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='d1dea435d8c81054cc72be070158dae77e96e8657912f7d4bbf0c987b387191c session=0c9032dedbb745c09f1b4b4bcccf8c77'>d1dea435<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:30:17</td><td>BZ-USDT Perp<br/><span class='sub'>BZUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=35.56 size=500.00 | hash=f5004b0cd6453a4c65817b31b4f5aff58c43ce451e09e090d5f552b5b42300d3'>long ENTER on BULLISH_DIV rsi=35.56 size=500.00</td><td class='mono' title='f5004b0cd6453a4c65817b31b4f5aff58c43ce451e09e090d5f552b5b42300d3 session=0c9032dedbb745c09f1b4b4bcccf8c77'>f5004b0c<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:30:11</td><td>LTC-USDT Perp<br/><span class='sub'>LTCUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=5c6174f9fa0e3983a88a75528dc8395e8e0f944d60686fbcbff0f44d59d21d8a'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='5c6174f9fa0e3983a88a75528dc8395e8e0f944d60686fbcbff0f44d59d21d8a session=0c9032dedbb745c09f1b4b4bcccf8c77'>5c6174f9<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:00:45</td><td>CL-USDT Perp<br/><span class='sub'>CLUSDT</span></td><td>LEVEL_CROSS_DOWN</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on LEVEL_CROSS_DOWN rsi=38.6 size=500.00 | hash=701a54e35d782fde7602784b97fefe009b4df3e268902de124a505be0a18114d'>long ENTER on LEVEL_CROSS_DOWN rsi=38.6 size=500.00</td><td class='mono' title='701a54e35d782fde7602784b97fefe009b4df3e268902de124a505be0a18114d session=0c9032dedbb745c09f1b4b4bcccf8c77'>701a54e3<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:00:37</td><td>CL-USDT Perp<br/><span class='sub'>CLUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=34.43 size=500.00 | hash=55430f4697df9367ecf22570fb100ef72d8bb4d6726f958191420f41c55754f2'>long ENTER on BULLISH_DIV rsi=34.43 size=500.00</td><td class='mono' title='55430f4697df9367ecf22570fb100ef72d8bb4d6726f958191420f41c55754f2 session=0c9032dedbb745c09f1b4b4bcccf8c77'>55430f46<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:00:28</td><td>HYPE-USDT Perp<br/><span class='sub'>HYPEUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=f09243d1f77a3594def3f9b95796f99102cdda5b9c9022d1962eafa900db4f90'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='f09243d1f77a3594def3f9b95796f99102cdda5b9c9022d1962eafa900db4f90 session=0c9032dedbb745c09f1b4b4bcccf8c77'>f09243d1<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:00:20</td><td>ADA-USDT Perp<br/><span class='sub'>ADAUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=ee65c039da569135ce42327d76450a0d2a76bf577647b5b8c87ef6acde2ff6ff'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='ee65c039da569135ce42327d76450a0d2a76bf577647b5b8c87ef6acde2ff6ff session=0c9032dedbb745c09f1b4b4bcccf8c77'>ee65c039<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>13:00:08</td><td>AAPL-USDT Perp<br/><span class='sub'>AAPLUSDT</span></td><td>BEARISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag skip">SKIP</span></td><td><span class="tag">—</span></td><td class='sub' title='btc_filter:btc_regime:bullish_block_short | hash=a7501d25945857068e784b37c859d0d9c26019fc4ca8c7405ad03a5fc7f4b20b'>btc_filter:btc_regime:bullish_block_short</td><td class='mono' title='a7501d25945857068e784b37c859d0d9c26019fc4ca8c7405ad03a5fc7f4b20b session=0c9032dedbb745c09f1b4b4bcccf8c77'>a7501d25<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>12:45:10</td><td>PEPE-USDT Perp<br/><span class='sub'>PEPEUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=38.08 size=500.00 | hash=04366fa2472966d598e81c3c7a572a85b07ffc6c1c42844b54c9ea9486aa7e97'>long ENTER on BULLISH_DIV rsi=38.08 size=500.00</td><td class='mono' title='04366fa2472966d598e81c3c7a572a85b07ffc6c1c42844b54c9ea9486aa7e97 session=0c9032dedbb745c09f1b4b4bcccf8c77'>04366fa2<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>12:30:11</td><td>TSLA-USDT Perp<br/><span class='sub'>TSLAUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=41.6 size=500.00 | hash=a5acc74c141ca5fc795d2c031595f09c384508b3aa80b702c3ae87fa7c44b834'>long ENTER on BULLISH_DIV rsi=41.6 size=500.00</td><td class='mono' title='a5acc74c141ca5fc795d2c031595f09c384508b3aa80b702c3ae87fa7c44b834 session=0c9032dedbb745c09f1b4b4bcccf8c77'>a5acc74c<br/><span class='sub'>0c9032de</span></td></tr><tr><td class='mono'>12:00:47</td><td>XAU-USDT Perp<br/><span class='sub'>XAUUSDT</span></td><td>BULLISH_DIV</td><td><span class="tag llm" title="Groq/OpenAI-compatible decide">LLM</span></td><td><span class="tag enter">ENTER</span></td><td><span class="tag bad">DENY</span></td><td class='sub' title='long ENTER on BULLISH_DIV rsi=47.4 size=500.00 | hash=21222ed41df5c4636b8854752263bb3ce29c06894448a41d8b7889bd053e03c2'>long ENTER on BULLISH_DIV rsi=47.4 size=500.00</td><td class='mono' title='21222ed41df5c4636b8854752263bb3ce29c06894448a41d8b7889bd053e03c2 session=0c9032dedbb745c09f1b4b4bcccf8c77'>21222ed4<br/><span class='sub'>0c9032de</span></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel" id="account">
+          <div class="panel-head">Account / Equity (Bitget)</div>
+          <div class="panel-body">
+            <div class="kpi" id="account-kpi">9869.58154786 USDT</div>
+            <div class="meta" id="account-meta">
+              source=hub_demo<br/>start=10000.0<br/>Δ vs start=<span style="font-weight:600;color:#d14f4f">-130.41845214000023</span><br/>available=9878.50609565<br/>realized (vs start)=-130.62375214000022<br/>uPnL (Demo)=<span style="font-weight:600;color:#22a06b">0.2053</span><br/>paper-live uPnL=0.0 (not in Demo equity)
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="agent">
+          <div class="panel-head">Agent / LLM</div>
+          <div class="panel-body">
+            <div id="agent-hint" class="risk-ok">LLM answering (rules_fired includes llm)</div>
+            <div class="meta" id="agent-meta" style="margin-top:8px;">
+              mode=llm<br/>model=qwen3.8-max<br/>last 20: llm=20 fallback=0 rules=0
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="risk">
+          <div class="panel-head">Risk status</div>
+          <div class="panel-body">
+            <div id="risk-hint" class="risk-ok">OK: daily_pnl=73.86 (kill at -150.00)</div>
+            <div class="meta" id="risk-meta" style="margin-top:8px;">
+              daily_pnl=73.85830055013253<br/>max_daily_loss_usd=150.0<br/>date=2026-09-17
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="ops">
+          <div class="panel-head">API / Ops</div>
+          <div class="panel-body meta">
+            <a href="/health">/health</a> ·
+            <a href="/positions">/positions</a> ·
+            <a href="/decisions">/decisions</a> ·
+            <a href="/fills">/fills</a> ·
+            <a href="/history">/history</a> ·
+            <a href="/chart?symbol=BTC/USDT:USDT&amp;timeframe=15m">/chart</a> ·
+            <a href="/candidates">/candidates</a> ·
+            <a href="/equity">/equity</a> ·
+            <a href="/account">/account</a>
+            <div class="footer" style="margin-top:8px;">
+              Scan once: <code>.venv\Scripts\python.exe scripts\run_signal_loop.py --once</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
+  <script>
+    (function () {
+      var allowed = { positions: 1, history: 1, decisions: 1 };
+      var pollMs = 8000;
+      var inflight = false;
+      function currentTab() {
+        var name = String(location.hash || '').replace('#', '');
+        if (allowed[name]) return name;
+        try {
+          name = String(sessionStorage.getItem('deskTab') || '');
+        } catch (e) {
+          name = '';
+        }
+        return allowed[name] ? name : 'positions';
+      }
+      function showTab(name) {
+        if (!allowed[name]) name = 'positions';
+        document.querySelectorAll('.tab-pane').forEach(function (el) {
+          el.classList.toggle('active', el.id === 'pane-' + name);
+        });
+        document.querySelectorAll('a.tab').forEach(function (el) {
+          el.classList.toggle('active', el.getAttribute('data-tab') === name);
+        });
+        try { sessionStorage.setItem('deskTab', name); } catch (e) {}
+        if (location.hash !== '#' + name) {
+          history.replaceState(null, '', '#' + name);
+        }
+      }
+      function patchHtml(id, html) {
+        var el = document.getElementById(id);
+        if (!el || html == null) return;
+        if (el.innerHTML === html) return;
+        var wrap = el.closest('.table-wrap');
+        var top = wrap ? wrap.scrollTop : 0;
+        el.innerHTML = html;
+        if (wrap) wrap.scrollTop = top;
+      }
+      function patchText(id, text) {
+        var el = document.getElementById(id);
+        if (!el || text == null) return;
+        if (el.textContent === String(text)) return;
+        el.textContent = String(text);
+      }
+      function applyLive(data) {
+        patchHtml('chips', data.chips);
+        patchHtml('account-kpi', data.account_kpi);
+        patchHtml('account-meta', data.account_meta);
+        patchHtml('risk-hint', data.risk_hint);
+        var rh = document.getElementById('risk-hint');
+        if (rh && data.risk_class) rh.className = data.risk_class;
+        patchHtml('risk-meta', data.risk_meta);
+        patchHtml('agent-hint', data.agent_hint);
+        var ah = document.getElementById('agent-hint');
+        if (ah && data.agent_hint_class) ah.className = data.agent_hint_class;
+        patchHtml('agent-meta', data.agent_meta);
+        patchHtml('tbody-positions', data.pos_rows);
+        patchHtml('tbody-history', data.hist_rows);
+        patchHtml('tbody-decisions', data.dec_rows);
+        patchText('head-positions', data.pos_head);
+        patchText('head-history', data.hist_head);
+        patchText('head-decisions', data.dec_head);
+        patchText('count-positions', data.open_n);
+        patchText('count-history', data.hist_n);
+        patchText('count-decisions', data.dec_n);
+        var stamp = document.getElementById('live-stamp');
+        if (stamp && data.ts) stamp.textContent = data.ts + ' UTC';
+      }
+      function refreshLive() {
+        if (inflight) return Promise.resolve();
+        if (document.visibilityState === 'hidden') return Promise.resolve();
+        inflight = true;
+        return fetch('/ui/live', { cache: 'no-store' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(applyLive)
+          .catch(function () {})
+          .then(function () { inflight = false; });
+      }
+      showTab(currentTab());
+      window.addEventListener('hashchange', function () { showTab(currentTab()); });
+      document.querySelectorAll('a.tab').forEach(function (el) {
+        el.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          showTab(el.getAttribute('data-tab'));
+        });
+      });
+      var btn = document.getElementById('btn-refresh');
+      if (btn) {
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          refreshLive();
+        });
+      }
+      setInterval(refreshLive, pollMs);
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') refreshLive();
+      });
+      var map = {
+        r: function () { refreshLive(); },
+        p: function () { showTab('positions'); },
+        t: function () { showTab('history'); },
+        d: function () { showTab('decisions'); },
+        k: function () {
+          var risk = document.getElementById('risk');
+          if (risk) risk.scrollIntoView();
+        },
+        h: function () { window.open('/health', '_blank'); },
+        e: function () { window.open('/equity', '_blank'); }
+      };
+      document.addEventListener('keydown', function (ev) {
+        if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+        var el = ev.target;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+        var fn = map[String(ev.key || '').toLowerCase()];
+        if (fn) { ev.preventDefault(); fn(); }
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -1,0 +1,49 @@
+---
+description: Live desk config — overrides v1, prior chats, and stale docs
+alwaysApply: true
+---
+
+# Live desk config (user 2026-09-16 — wins over everything earlier)
+
+This file is the policy source of truth. It overrides v1 divergent DB defaults, older `.cursorrules` / chat memory, and any doc that still says `TIMEFRAME=15m` only, `RSI_LONG_MAX=30`, `MAX_DAILY_LOSS_USD=50`, or `LEVEL_CROSS_UP` in `ALLOWED_TYPES`.
+
+Copy numbers from local `.env` / `.env.example`. Do not “realign to v1” unless the user asks.
+
+## Exec / safety (unchanged)
+
+- `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`
+- Never bypass `risk/gate.py`. Size with `risk/sizing.py`
+- Do not commit `.env` or `data/*.jsonl` / `data/*.json`
+- Do not mutate `C:\divergent`
+- `PAPER_FALLBACK=0` — Demo catalog only. Paper-live PnL is not Demo equity
+
+## Scan / signals
+
+- `TIMEFRAMES=15m,1h,4h` (also set on `TIMEFRAME` as a comma list). Loop + public WS scan **all three**. Do not collapse back to 15m-only
+- `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` — **no** `LEVEL_CROSS_UP`
+- `LEVEL_CROSS_DOWN` → long; `LEVEL_CROSS_UP` → short (detector still exists, just not allowed)
+- `ALLOW_LONG=1`, `ALLOW_SHORT=1`
+- `RSI_LONG_MAX=0` — zone **off**. Do not restore 30. Code default is 0. Longs with RSI 20–69 are valid; still skip `rsi_extreme_long` (≥70) / `rsi_extreme_short` (≤30)
+- `TF_BLOCKER_ENABLED=0` — leave off even though 15m is no longer the only TF. Pair blocker stays on
+
+## Risk
+
+- `RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MIN_NOTIONAL_USD=10`
+- `MAX_POSITIONS=15`
+- `MAX_SAME_DIRECTION_POSITIONS=4` (correlation guard; alias `CORRELATION_GUARD_MAX`)
+- `MAX_DAILY_LOSS_USD=150` (not 50)
+- `COOLDOWN_SEC=900`
+- Dollar stop: `MAX_LOSS_PCT_OF_MARGIN=40`, `DOLLAR_STOP_SL_PCT_THRESHOLD=0`
+- rToken / stocks: `RTOKEN_ATR_TF=1h`, `RTOKEN_ATR_FLOOR_PCT=0`, `RTOKEN_ATR_PCT_MIN=0.5` (no crypto 2% ATR floor). Crypto stays `ATR_PCT_MIN=0.3` + 2% floor on the signal TF
+
+## BTC filters
+
+- `BTC_REGIME_TF=4h`, `BTC_REGIME_ENABLED=1`, `BTC_EMA50_FILTER_ENABLED=0`
+- Momentum `1.2%` / `4h`. Symmetric: bearish blocks long, bullish blocks short
+- Do not restore `BTC_REGIME_TF=1h` unless the user asks
+
+## Hub
+
+- `HUB_LEVERAGE=20` is the **cap**. Opens use adaptive lev: `max(2, min(20, int(35 / SL%)))` so SL ≈ 35% of margin
+- `PAPER_LEVERAGE=1` — `size_usd` is notional
+- v3 `/trade/fills` must be filtered by symbol (+ qty); dummy BTC@65000 never hits live `data/paper_fills.jsonl`

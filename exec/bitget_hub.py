@@ -88,6 +88,24 @@ def ccxt_to_bitget_symbol(symbol: str) -> str:
     return s.replace("-", "").replace("_", "")
 
 
+def fill_symbol_key(raw: Any) -> str:
+    return ccxt_to_bitget_symbol(str(raw or "")).upper()
+
+
+def filter_fill_rows(items: list[dict[str, Any]], symbol: str | None) -> list[dict[str, Any]]:
+    """Keep fills for one Bitget symbol. v3 /trade/fills often ignores ?symbol=."""
+    want = fill_symbol_key(symbol) if symbol else ""
+    if not want:
+        return [x for x in items if isinstance(x, dict)]
+    kept: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if fill_symbol_key(it.get("symbol")) == want:
+            kept.append(it)
+    return kept
+
+
 def hub_leverage() -> int:
     """Exchange leverage for hub_demo/live opens. Default 20. Not PAPER_LEVERAGE."""
     raw = _env("HUB_LEVERAGE", "20")
@@ -96,6 +114,28 @@ def hub_leverage() -> int:
     except ValueError:
         lev = 20
     return max(1, min(125, lev))
+
+
+def calc_adaptive_leverage(
+    entry: float,
+    sl: float,
+    max_loss_pct: float = 35.0,
+    default_lev: int | None = None,
+) -> int:
+    """Adaptive leverage: target ~35% loss of margin at SL: max(2, min(cap, int(35 / SL%)))."""
+    cap = default_lev if default_lev is not None else hub_leverage()
+    try:
+        entry_f = float(entry)
+        sl_f = float(sl)
+        if entry_f <= 0 or sl_f <= 0:
+            return cap
+        sl_dist_pct = abs(entry_f - sl_f) / entry_f * 100.0
+        if sl_dist_pct <= 0:
+            return cap
+        calc_lev = int(max_loss_pct / sl_dist_pct)
+        return max(2, min(cap, calc_lev))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return cap
 
 
 def _pos_side_token(pos_side: str | None) -> str | None:
@@ -280,7 +320,28 @@ class BitgetUtaClient:
         if cursor:
             query["cursor"] = str(cursor)
         data = self.request("GET", "/api/v3/trade/fills", query=query)
-        return data.get("data") or {}
+        payload = data.get("data") or {}
+        want = ccxt_to_bitget_symbol(symbol) if symbol else ""
+        if not want:
+            return payload
+        if isinstance(payload, list):
+            items = [x for x in payload if isinstance(x, dict)]
+            kept = filter_fill_rows(items, want)
+            dropped = len(items) - len(kept)
+            if dropped:
+                print(f"[HUB] fills filtered {want}: kept={len(kept)} dropped={dropped}")
+            return {"list": kept}
+        if isinstance(payload, dict):
+            items = payload.get("list") or payload.get("fills") or []
+            rows = [x for x in items if isinstance(x, dict)]
+            kept = filter_fill_rows(rows, want)
+            dropped = len(rows) - len(kept)
+            if dropped:
+                print(f"[HUB] fills filtered {want}: kept={len(kept)} dropped={dropped}")
+            out = dict(payload)
+            out["list"] = kept
+            return out
+        return payload
 
     def unfilled_strategy_orders(
         self,
@@ -492,6 +553,7 @@ class BitgetUtaClient:
         pos_side: str | None = None,
         reduce_only: bool = False,
         set_leverage: bool | None = None,
+        leverage: int | None = None,
     ) -> dict[str, Any]:
         """USDT-FUTURES market. side long/buy or short/sell; pos_side long/short."""
         bitget_symbol = ccxt_to_bitget_symbol(symbol)
@@ -506,7 +568,7 @@ class BitgetUtaClient:
             raise ValueError(f"invalid side: {side}")
         hold = pos_side or default_pos
         if (not reduce_only) if set_leverage is None else set_leverage:
-            self.ensure_leverage(symbol, pos_side=hold)
+            self.ensure_leverage(symbol, pos_side=hold, leverage=leverage)
         body: dict[str, Any] = {
             "category": "USDT-FUTURES",
             "symbol": bitget_symbol,

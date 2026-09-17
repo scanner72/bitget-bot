@@ -110,7 +110,12 @@ class BlockerConfig:
             interval_sec=max(60.0, _env_float("PAIR_BLOCKER_INTERVAL_SEC", 600.0)),
             fills_path=Path(fills) if fills else DEFAULT_FILLS_PATH,
             blocks_path=Path(blocks) if blocks else DEFAULT_BLOCKS_PATH,
-            default_timeframe=(os.getenv("TIMEFRAME", "15m") or "15m").strip(),
+            default_timeframe=(
+                (os.getenv("TIMEFRAMES") or os.getenv("TIMEFRAME") or "15m")
+                .split(",")[0]
+                .strip()
+                or "15m"
+            ),
         )
 
 

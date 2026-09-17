@@ -1,6 +1,6 @@
 ﻿# DEMO — сценарий записи (2–3 мин) | Bitget S2
 
-**Трек:** Agent Trading / Divergent Agent Desk  
+**Трек:** Agentic Trading / Divergent Agent Desk
 **Режим:** `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0` — Bitget UTA Demo (`paptrading`) + paper shadow для soft exits/UI.  
 **Цель записи:** один проход без монтажа: pitch → smoke → loop once → dashboard с Demo PnL.
 
@@ -25,7 +25,7 @@ cd C:\bitget-bot
 Говорите по пунктам (RU, можно вкраплениями EN):
 
 1. **Что это:** Divergent Agent Desk для Bitget S2 — публичный OHLCV → RSI/level-cross → decide (`rules` или `llm`, fallback на rules) → risk-gate → **Bitget Demo UTA** market open/close + paper shadow (TP1→BE/trail) → FastAPI dashboard.
-2. **Трек:** Agent Trading / Divergent Agent Desk. **Live mainnet не в scope** — только Demo (`paptrading`); `BITGET_ALLOW_LIVE=0`.
+2. **Трек:** Agentic Trading / Divergent Agent Desk. **Live mainnet не в scope** — только Demo (`paptrading`); `BITGET_ALLOW_LIVE=0`.
 3. **Стек:** public WS candles (`MARKET_DATA_MODE=ws`) + REST bootstrap → `signals/` → `desk` loop → `agent.decide` → `risk.gate` → `exec.router` → `exec.bitget_hub` + `exec.paper` → `api` `:8080` (исполнение остаётся REST).
 4. **Риски:** risk-to-SL sizing (`RISK_USD_PER_TRADE`), exchange SL+TP2 при open, sync SL после TP1; daily loss kill / max positions / cooldown — env + `decisions.jsonl`.
 5. **Docker опционален:** `docker compose up -d`; для записи достаточно `.venv`.
@@ -62,14 +62,15 @@ cd C:\bitget-bot
 | `http://127.0.0.1:8080/health` | `exec_mode: hub_demo`, `bitget_demo: true` |
 | `http://127.0.0.1:8080/` | HTML desk, auto-refresh 8s, PnL с Demo |
 | `http://127.0.0.1:8080/positions` | `pnl_source=hub_demo`, exchange entry/mark/margin |
+| `http://127.0.0.1:8080/fills?limit=100` | реальные Bitget `exec_pnl` и комиссии |
 | `http://127.0.0.1:8080/decisions` | agent + risk decisions |
-| `http://127.0.0.1:8080/account` | Demo equity overlay |
+| `http://127.0.0.1:8080/equity` | авторитетный Demo equity; paper отдельно |
 
 Скриншот-хелпер: `docs/demo_artifacts/snapshot.html`.
 
 ### D. Закрытие (~10 с)
 
-- Повторить: **Bitget Demo UTA**, не live mainnet, трек **Agent Trading**, репо + `docs/SUBMISSION.md`.
+- Повторить: **Bitget Demo UTA**, не live mainnet, трек **Agentic Trading**, репо + `docs/SUBMISSION.md`.
 - Docker optional для судей.
 
 ---

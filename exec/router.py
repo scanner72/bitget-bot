@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from exec.paper import PaperBook, close_paper, open_paper
@@ -19,6 +20,10 @@ from exec.demo_universe import (
 )
 
 
+class DemoPriceMismatchError(RuntimeError):
+    """Hub Demo/live mark or fill is on a different scale than public candles."""
+
+
 def exec_mode() -> str:
     mode = (os.getenv("EXEC_MODE") or "paper").strip().lower()
     if mode in {"hub_demo", "demo"}:
@@ -26,6 +31,111 @@ def exec_mode() -> str:
     if mode in {"live", "hub_live"}:
         return "live"
     return "paper"
+
+
+def _qty_ref_price(symbol: str, fallback: float) -> float:
+    """Live mark for hub qty; fallback is bar close already validated by pipeline."""
+    try:
+        from ingest.bitget_ohlcv import fetch_mark_price
+
+        mark = float(fetch_mark_price(symbol))
+        if mark > 0:
+            return mark
+    except Exception as exc:  # noqa: BLE001
+        print(f"[HUB] mark fetch warn {symbol}: {exc}")
+    fb = float(fallback)
+    if fb <= 0:
+        raise ValueError("qty ref price must be > 0")
+    return fb
+
+
+def _max_price_dev_pct() -> float:
+    raw = (os.getenv("SIGNAL_PRICE_MAX_DEV_PCT") or "5").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 5.0
+
+
+def _price_dev_pct(a: float, b: float) -> float | None:
+    try:
+        aa = float(a)
+        bb = float(b)
+    except (TypeError, ValueError):
+        return None
+    if aa <= 0 or bb <= 0:
+        return None
+    return abs(aa / bb - 1.0) * 100.0
+
+
+def _price_scale_reason(ref: float, other: float | None, *, label: str) -> str | None:
+    """None when other is missing or within SIGNAL_PRICE_MAX_DEV_PCT of ref."""
+    max_dev = _max_price_dev_pct()
+    if max_dev <= 0 or other is None:
+        return None
+    dev = _price_dev_pct(other, ref)
+    if dev is None or dev <= max_dev:
+        return None
+    return f"{label}:{other} vs ref={ref} dev={dev:.2f}%>{max_dev}"
+
+
+def _fetch_hub_mark(client: Any, symbol: str) -> float | None:
+    """Venue mark/last (Demo when paptrading=1). None if the ticker is unavailable."""
+    if not hasattr(client, "request"):
+        return None
+    try:
+        from exec.bitget_hub import ccxt_to_bitget_symbol
+
+        bg = ccxt_to_bitget_symbol(symbol)
+        payload = client.request(
+            "GET",
+            "/api/v3/market/tickers",
+            query={"category": "USDT-FUTURES", "symbol": bg},
+        )
+        data = payload.get("data") if isinstance(payload, dict) else payload
+        if isinstance(data, dict):
+            data = data.get("list") or []
+        row: Any = None
+        if isinstance(data, list) and data:
+            row = data[0]
+        elif isinstance(data, dict):
+            row = data
+        if not isinstance(row, dict):
+            return None
+        for key in ("markPrice", "lastPrice", "indexPrice"):
+            px = _safe_float(row.get(key), None)
+            if px is not None and px > 0:
+                return px
+    except Exception as exc:  # noqa: BLE001
+        print(f"[HUB] venue mark fetch warn {symbol}: {exc}")
+    return None
+
+
+def _flatten_hub_open(
+    client: Any,
+    symbol: str,
+    side: str,
+    qty: str,
+    meta: dict[str, Any],
+    *,
+    reason: str,
+) -> None:
+    last_exc: Exception | None = None
+    for _ in range(2):
+        try:
+            closed = client.close_perp_market(symbol, side, str(qty))
+            meta["hub_mismatch_close_order_id"] = closed.get("orderId")
+            print(
+                f"[HUB] FLATTEN {reason} {side} {symbol} qty={qty} "
+                f"orderId={closed.get('orderId')}"
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            print(f"[HUB] FLATTEN ERROR {symbol}: {exc}")
+            time.sleep(0.25)
+    if last_exc is not None:
+        meta["hub_mismatch_close_error"] = f"{type(last_exc).__name__}: {last_exc}"
 
 
 def _qty_from_size(size_usd: float, price: float, *, decimals: int = 4) -> str:
@@ -293,6 +403,15 @@ def sync_exchange_sl(
             return None
     except (TypeError, ValueError):
         pass
+    # A rejected move at the same target must not be retried on every quote.
+    # A genuinely new SL remains eligible for one attempt.
+    attempted = meta.get("hub_sl_sync_attempt_price")
+    if meta.get("hub_sl_sync_error") and attempted is not None:
+        try:
+            if abs(float(attempted) - new_f) < 1e-9:
+                return None
+        except (TypeError, ValueError):
+            pass
     if is_paper_venue(pos):
         return None
     if mode == "live":
@@ -324,11 +443,19 @@ def sync_exchange_sl(
             "hub_sl_client_oid": out.get("clientOid") or meta.get("hub_sl_client_oid"),
             "hub_sl_price": client._round_px(new_f, str(pos.get("symbol"))),
             "hub_sl_sync_reason": reason,
+            "hub_sl_sync_attempt_price": new_f,
+            "hub_sl_sync_attempt_ts": datetime.now(timezone.utc).isoformat(),
+            "hub_sl_sync_error": None,
             "hub_tpsl_order_id": out.get("orderId") or meta.get("hub_tpsl_order_id"),
         }
     except Exception as exc:  # noqa: BLE001
         print(f"[HUB] SL MOVE ERROR {pos.get('symbol')}: {exc}")
-        return {"hub_sl_sync_error": f"{type(exc).__name__}: {exc}"}
+        return {
+            "hub_sl_sync_error": f"{type(exc).__name__}: {exc}",
+            "hub_sl_sync_attempt_price": new_f,
+            "hub_sl_sync_attempt_ts": datetime.now(timezone.utc).isoformat(),
+            "hub_sl_sync_reason": reason,
+        }
 
 
 def open_position(
@@ -373,17 +500,36 @@ def open_position(
             raise NotOnDemoError(symbol)
 
     if mode in {"hub_demo", "live"}:
-        from exec.bitget_hub import BitgetUtaClient, hub_leverage
+        from exec.bitget_hub import BitgetUtaClient, hub_leverage, calc_adaptive_leverage
 
         client = BitgetUtaClient.from_env()
         if mode == "hub_demo" and not client.demo:
             raise RuntimeError("hub_demo requires BITGET_DEMO=1 / paptrading client")
         if mode == "live" and client.demo:
             raise RuntimeError("live mode but client is in demo/paptrading")
-        qty = _qty_from_size(size_usd, signal_price)
+        qty_px = _qty_ref_price(symbol, signal_price)
+        meta["qty_ref_price"] = qty_px
+        if mode == "hub_demo":
+            demo_mark = _fetch_hub_mark(client, symbol)
+            if demo_mark is not None:
+                meta["hub_mark_pre_open"] = demo_mark
+                mismatch = _price_scale_reason(
+                    qty_px, demo_mark, label="demo_mark"
+                )
+                if mismatch:
+                    meta["hub_price_mismatch"] = mismatch
+                    print(f"[HUB] SKIP price scale {symbol}: {mismatch}")
+                    raise DemoPriceMismatchError(f"{symbol}: {mismatch}")
+        qty = _qty_from_size(size_usd, qty_px)
+        sl_val = meta.get("sl")
+        if sl_val and signal_price > 0:
+            target_lev = calc_adaptive_leverage(signal_price, float(sl_val), default_lev=hub_leverage())
+        else:
+            target_lev = hub_leverage()
         try:
-            placed = client.place_perp_market(symbol, side, qty)
-            meta["hub_leverage"] = hub_leverage()
+            placed = client.place_perp_market(symbol, side, qty, leverage=target_lev)
+            meta["hub_leverage"] = target_lev
+            meta["leverage"] = target_lev
         except Exception as exc:
             if (
                 mode == "hub_demo"
@@ -412,7 +558,7 @@ def open_position(
         meta["hub_client_oid"] = placed.get("clientOid")
         meta["hub_qty"] = qty
         print(
-            f"[HUB] OPEN {mode} {side} {symbol} qty={qty} @~{signal_price} "
+            f"[HUB] OPEN {mode} {side} {symbol} qty={qty} @~{qty_px} "
             f"{meta.get('hub_leverage')}x orderId={placed.get('orderId')}"
         )
 
@@ -436,6 +582,22 @@ def open_position(
         if mark is None or mark <= 0:
             mark = fill_entry
         meta["hub_mark_at_open"] = mark
+        mismatch = _price_scale_reason(qty_px, fill_entry, label="hub_entry")
+        if mismatch is None:
+            mismatch = _price_scale_reason(qty_px, mark, label="hub_mark")
+        if mismatch:
+            meta["hub_price_mismatch"] = mismatch
+            flatten_qty = str(meta.get("hub_qty") or qty)
+            _flatten_hub_open(
+                client,
+                symbol,
+                side,
+                flatten_qty,
+                meta,
+                reason="price_scale",
+            )
+            print(f"[HUB] SKIP flatten price scale {symbol}: {mismatch}")
+            raise DemoPriceMismatchError(f"{symbol}: {mismatch}")
         paper_price = float(fill_entry)
 
         levels = _recompute_levels_for_entry(meta, entry=paper_price, side=side)

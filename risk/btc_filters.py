@@ -64,7 +64,7 @@ def _get_btc_regime() -> str:
     try:
         from ingest.bitget_ohlcv import fetch_ohlcv
 
-        tf = _env_str("BTC_REGIME_TF", "1h")
+        tf = _env_str("BTC_REGIME_TF", "4h")
         df = fetch_ohlcv(symbol=_btc_symbol(), timeframe=tf, limit=220)
         ema = _ema(df["close"], 200)
         last = float(df["close"].iloc[-1])

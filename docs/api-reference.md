@@ -22,7 +22,9 @@ Base: `http://127.0.0.1:8080`. HTML on `/` and `/chart`; everything else JSON. H
 
 ## `GET /account` and `GET /equity`
 
-Same payload: paper account snapshot, then Demo overlay when hub is up (`exec/hub_balance.py`). Typical keys: `start_balance`, `cash`, `realized_pnl`, `open_positions_notional`, `total_unrealized_pnl`, `equity`, `equity_mtm`, `currency`. Overlay may add Demo equity fields; on hub failure `hub_overlay_error` is set and paper values stay.
+Same payload: paper account snapshot, then Demo overlay when hub is up (`exec/hub_balance.py`). In `hub_demo`, the **top-level Demo values are the monetary source of truth**: `equity` / `demo_equity`, `pnl_vs_start`, `hub_available`, and `hub_unrealised_pnl`. The local mirror remains under `paper`; it is useful for bot accounting but may differ from Bitget.
+
+If the hub request fails, `hub_overlay_error` is set and paper values remain. Do not present that fallback as confirmed exchange equity.
 
 ## `GET /positions`
 
@@ -52,11 +54,21 @@ Object, not a bare array (`exec/hub_view.py`):
 
 ## `GET /fills?limit=50`
 
-`{ "fills": [ ... ], "count": N, "source": "hub_demo" }` (or paper).
+`{ "fills": [ ... ], "count": N, "source": "hub_demo" }` (or paper). With `source=hub_demo`, rows come from Bitget UTA and `exec_pnl` is the authoritative realized execution PnL. Fees are separate in `fee`.
 
 ## `GET /history?limit=40`
 
-`{ "trades": [ ... ], "count": N }` closed trades for the dashboard history/chart.
+`{ "trades": [ ... ], "count": N }` closed trades reconstructed from local `data/paper_fills.jsonl`. This is **paper-shadow history**, used for bot exit status, SL/TP overlays and analysis. Its `realized_pnl` can differ from Bitget `exec_pnl` because of fill price, quantity, fees, delayed reconciliation, or an unmatched hub fill.
+
+## PnL source precedence
+
+For `EXEC_MODE=hub_demo`, use this order:
+
+1. `/equity` — authoritative current Demo wallet/equity.
+2. `/fills` with `source=hub_demo` — authoritative execution-level `exec_pnl` and fees.
+3. `/history` — local paper-shadow reconstruction; never override exchange money with it.
+
+The dashboard **Trade history** tab shows item 3. The Account card uses item 1.
 
 ## `GET /api/chart/data?symbol=BTC/USDT:USDT&timeframe=15m&limit=400`
 

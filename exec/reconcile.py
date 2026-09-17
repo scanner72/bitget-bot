@@ -131,24 +131,83 @@ def _fills_list(raw: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _fill_symbol_key(raw: Any) -> str:
+    from exec.bitget_hub import fill_symbol_key
+
+    return fill_symbol_key(raw)
+
+
+def _expected_hub_qty(pos: dict[str, Any]) -> float | None:
+    meta = pos.get("meta") if isinstance(pos.get("meta"), dict) else {}
+    for raw in (meta.get("hub_qty"), pos.get("qty"), pos.get("hub_qty")):
+        try:
+            v = float(raw)
+            if v > 0:
+                return v
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _exec_qty(it: dict[str, Any]) -> float:
+    try:
+        return float(it.get("execQty") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _select_close_rows(
+    rows: list[dict[str, Any]],
+    expected_qty: float | None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Prefer the fill whose qty matches the open hub_qty (same-symbol leftovers)."""
+    if not rows:
+        return rows, None
+    if expected_qty is None or expected_qty <= 0:
+        return rows, None
+    near = [
+        it
+        for it in rows
+        if _exec_qty(it) > 0 and abs(_exec_qty(it) - expected_qty) / expected_qty <= 0.25
+    ]
+    if near:
+        return near, "hub_qty"
+    return rows, None
+
+
 def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, Any]]:
     """Price/PnL from Bitget close fills; empty extras if unavailable."""
     extras: dict[str, Any] = {}
+    opened = _parse_ts(pos.get("opened_ts"))
+    opened_ms = int(opened.timestamp() * 1000) if opened else 0
     try:
         from exec.bitget_hub import BitgetUtaClient, ccxt_to_bitget_symbol
 
         client = BitgetUtaClient.from_env()
-        bg = ccxt_to_bitget_symbol(str(pos.get("symbol") or ""))
-        raw = client.fills(category="USDT-FUTURES", symbol=bg, limit=100)
+        bg = ccxt_to_bitget_symbol(str(pos.get("symbol") or "")).upper()
+        raw = client.fills(
+            category="USDT-FUTURES",
+            symbol=bg,
+            start_time=opened_ms or None,
+            limit=100,
+        )
         items = _fills_list(raw)
     except Exception as exc:  # noqa: BLE001
         extras["hub_fill_lookup_error"] = f"{type(exc).__name__}: {exc}"
         return None, extras
 
-    opened = _parse_ts(pos.get("opened_ts"))
-    opened_ms = int(opened.timestamp() * 1000) if opened else 0
+    pos_side = str(pos.get("side") or "").lower()
     close_rows: list[dict[str, Any]] = []
+    skipped_other = 0
     for it in items:
+        it_sym = _fill_symbol_key(it.get("symbol"))
+        # v3 /trade/fills often ignores ?symbol= and returns the whole book.
+        if bg and it_sym and it_sym != bg:
+            skipped_other += 1
+            continue
+        hold = str(it.get("posSide") or it.get("holdSide") or "").lower()
+        if pos_side and hold and hold not in {pos_side, "net"}:
+            continue
         trade = str(it.get("tradeSide") or "").lower()
         if "close" not in trade:
             continue
@@ -159,6 +218,12 @@ def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, A
         if opened_ms and ts and ts + 5000 < opened_ms:
             continue
         close_rows.append(it)
+    if skipped_other:
+        extras["hub_fills_skipped_other_symbol"] = skipped_other
+    expected_qty = _expected_hub_qty(pos)
+    close_rows, qty_src = _select_close_rows(close_rows, expected_qty)
+    if qty_src:
+        extras["hub_close_qty_match"] = qty_src
     if not close_rows:
         return None, extras
 
@@ -198,6 +263,21 @@ def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, A
     extras["hub_close_fill_id"] = last.get("execId")
     extras["hub_exec_pnl"] = pnl_sum
     extras["hub_close_qty"] = qty_sum
+    if expected_qty and qty_sum > 0:
+        ratio = qty_sum / expected_qty
+        if ratio < 0.5 or ratio > 2.0:
+            extras["hub_close_qty_rejected"] = qty_sum
+            extras["close_price_source"] = "rejected_qty_mismatch"
+            return None, extras
+    try:
+        entry = float(pos.get("entry_price") or 0)
+    except (TypeError, ValueError):
+        entry = 0.0
+    if px is not None and entry > 0 and abs(float(px) - entry) / entry > 0.25:
+        extras["hub_close_price_rejected"] = px
+        extras["close_price_source"] = "rejected_vs_entry"
+        return None, extras
+    extras["close_price_source"] = "hub_fill"
     return px, extras
 
 
@@ -315,6 +395,12 @@ def reconcile_paper_with_exchange(
             continue
 
         pid = str(pos.get("position_id") or "")
+        hub_pnl = None
+        try:
+            if fill_meta.get("hub_exec_pnl") is not None:
+                hub_pnl = float(fill_meta["hub_exec_pnl"])
+        except (TypeError, ValueError):
+            hub_pnl = None
         try:
             result = close_paper(
                 pid,
@@ -328,6 +414,7 @@ def reconcile_paper_with_exchange(
                 },
                 gate=gate,
                 book=b,
+                realized_pnl=hub_pnl,
             )
             print(
                 f"[RECONCILE] CLOSE {pid} {pos.get('symbol')} "

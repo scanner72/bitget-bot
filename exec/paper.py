@@ -19,6 +19,40 @@ from exec.account import PaperAccount, get_account
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FILLS_PATH = ROOT / "data" / "paper_fills.jsonl"
 DEFAULT_POSITIONS_PATH = ROOT / "data" / "paper_positions.json"
+DUMMY_SMOKE_BTC_PRICE = 65000.0
+
+
+def is_dummy_smoke_btc(symbol: str, price: float) -> bool:
+    """True for the BTC@65000 fixture used by offline smokes."""
+    try:
+        px = float(price)
+    except (TypeError, ValueError):
+        return False
+    if abs(px - DUMMY_SMOKE_BTC_PRICE) > 1e-9:
+        return False
+    return "BTC" in str(symbol).upper()
+
+
+def _fills_is_live_desk_book(fills_file: Path | None) -> bool:
+    if fills_file is None:
+        return True
+    try:
+        return Path(fills_file).resolve() == DEFAULT_FILLS_PATH.resolve()
+    except OSError:
+        return False
+
+
+def reject_dummy_smoke_on_live_book(
+    symbol: str,
+    price: float,
+    fills_file: Path | None,
+) -> None:
+    """Refuse to persist the smoke BTC@65000 fixture into data/paper_fills.jsonl."""
+    if not is_dummy_smoke_btc(symbol, price):
+        return
+    if not _fills_is_live_desk_book(fills_file):
+        return
+    raise ValueError("dummy smoke BTC@65000 blocked on live paper book")
 
 
 def _utc_now() -> datetime:
@@ -250,6 +284,7 @@ class PaperBook:
             raise ValueError("size_usd must be > 0")
         if price <= 0:
             raise ValueError("price must be > 0")
+        reject_dummy_smoke_on_live_book(symbol, price, self.fills_file)
 
         acct = self.account or get_account()
         ok, reason = acct.can_open(size_usd)
@@ -379,6 +414,7 @@ class PaperBook:
         price: float,
         *,
         meta: dict[str, Any] | None = None,
+        realized_pnl: float | None = None,
     ) -> dict[str, Any]:
         """Close by position_id or symbol. Realizes PnL; fill + risk.record_close."""
         key = str(position_id_or_symbol).strip()
@@ -408,10 +444,13 @@ class PaperBook:
         symbol = str(pos.get("symbol") or "")
         qty = float(pos.get("qty") or _qty_from_size(size_usd, entry if entry else price))
         pnl = _realize_pnl(side, entry, price, size_usd)
+        close_meta = dict(meta or {})
+        if realized_pnl is not None:
+            pnl = float(realized_pnl)
+            close_meta.setdefault("realized_source", "hub_exec_pnl")
         fill_id = _new_id("fill")
         now = _utc_now()
         iso = now.isoformat()
-        close_meta = dict(meta or {})
 
         fill = {
             "ts": iso,
@@ -499,11 +538,14 @@ def close_paper(
     meta: dict[str, Any] | None = None,
     gate: RiskGate | None = None,
     book: PaperBook | None = None,
+    realized_pnl: float | None = None,
 ) -> dict[str, Any]:
     b = book or _book(gate)
     if gate is not None and book is None:
         b.gate = gate
-    return b.close_paper(position_id_or_symbol, price, meta=meta)
+    return b.close_paper(
+        position_id_or_symbol, price, meta=meta, realized_pnl=realized_pnl
+    )
 
 
 def list_open(

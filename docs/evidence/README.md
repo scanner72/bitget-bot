@@ -39,7 +39,7 @@ Not Ed25519, not on-chain. A one-byte edit of a sealed row fails verification.
 
 | File | Role |
 |------|------|
-| [`paper_trading_log.csv`](paper_trading_log.csv) | Canonical checklist CSV: **Bitget UTA Demo** fills only (`hub_demo` + paper-shadow closes of those Demo positions). Not paper-live, not Divergent V1. |
+| [`paper_trading_log.csv`](paper_trading_log.csv) | Canonical checklist CSV reconstructed from this desk's **Bitget UTA Demo-linked** ledger (`hub_demo` + paper-shadow closes). It is evidence history, not an authoritative wallet statement. Not paper-live, not Divergent V1. |
 | [`paper_trading_log.jsonl`](paper_trading_log.jsonl) | Same rows, one JSON object per line |
 | [`paper_trading_log.sample.csv`](paper_trading_log.sample.csv) | Sanitized **SIMULATED_DEMO** snapshot, always labeled |
 | [`fixtures/paper_fills.desk.jsonl`](fixtures/paper_fills.desk.jsonl) | Native fills from this desk (source for the canonical log) |
@@ -68,11 +68,23 @@ Checklist fields first, then desk extras:
 | `label` | `DEMO` (this desk) or `SIMULATED_DEMO` (`--from-sample`) |
 | `signal_type` | From fill `meta.type` or joined `decisions.jsonl` |
 
-PnL on a close is the linear paper formula: long `size_usd * (exit/entry - 1)`; short inverted (`exec/paper.py`).
+PnL on a `paper_shadow` close is the linear local formula: long `size_usd * (exit/entry - 1)`; short inverted (`exec/paper.py`). It may differ from Bitget because of actual fill price/quantity, fees, or an unmatched close fill.
+
+For monetary reporting, use current Demo equity from `/equity` and exchange `exec_pnl` + `fee` from `/fills`. Keep exported paper-shadow PnL separately labeled; it must not override those values.
 
 ## Regenerate
 
-This desk’s UTA Demo fills (no `data/`, no keys, **not** paper-live, **not** Divergent V1):
+Refresh the committed fixture from the current gitignored desk, then regenerate
+the public log and validation report:
+
+```bash
+python scripts/capture_demo_artifacts.py
+python scripts/export_paper_log.py --refresh-desk-fixture
+python scripts/generate_s2_validation.py
+```
+
+Offline regeneration from the already committed fixture (no `data/`, no keys,
+**not** paper-live, **not** Divergent V1):
 
 ```bash
 python scripts/export_paper_log.py --from-desk
