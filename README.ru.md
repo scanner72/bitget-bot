@@ -17,17 +17,28 @@
 
 S2: токенизированные акции и крипто-перпы торгуются **7×24**. Люди спят — стол нет.
 
-**Утверждение:** RSI-дивергенция + level-cross на одном ТФ `15m`, риск-гейт и сайз до стопа достаточны для автономного цикла **событие → решение → fill на Bitget Demo UTA** на выходных. Без бана единственного ТФ, без подмешивания paper-live PnL в Demo equity, без превращения агента в research-совет или on-chain аттестацию.
+**Утверждение:** RSI-дивергенция + `LEVEL_CROSS_DOWN` на `15m`/`1h`/`4h`, риск-гейт и сайз до стопа достаточны для автономного цикла **событие → решение → fill на Bitget Demo UTA** на выходных. Без бана ТФ, без подмешивания paper-live PnL в Demo equity, без превращения агента в research-совет или on-chain аттестацию.
 
-rToken-перпы на выходных открыты (ATR 1h). Крипта остаётся на `15m`. `TF_BLOCKER_ENABLED=0`. Что отвергли: [docs/research-graveyard.md](docs/research-graveyard.md). Проверка лога решений: `python scripts/verify_decision_log.py`.
+rToken-перпы на выходных открыты (ATR 1h). `TIMEFRAMES=15m,1h,4h`. `RSI_LONG_MAX=0`. `TF_BLOCKER_ENABLED=0`. Что отвергли: [docs/research-graveyard.md](docs/research-graveyard.md). Проверка лога решений: `python scripts/verify_decision_log.py`.
 
 | Слой | Этот стол |
 |------|-----------|
-| Исполнение | `hub_demo` — market **20×** (`HUB_LEVERAGE`) + биржевые SL+TP2 на UTA Demo |
+| Исполнение | `hub_demo` — market, lev cap `HUB_LEVERAGE=20` (адаптивно 35/SL%) + биржевые SL+TP2 на UTA Demo |
 | Тень | Paper: ATR TP1 → стоп в безубыток + трейл |
 | Paper-live | `PAPER_FALLBACK=0` — скан всего Demo-каталога. `=1` снова включает локальный fill для имён вне Demo; **этот PnL не складывать с Demo equity** |
-| ТФ | только `15m`, `TF_BLOCKER_ENABLED=0` |
-| Агент | в `.env.example` — `rules`; живой стол — `llm` (Groq), при ошибке откат на rules |
+| ТФ | `15m,1h,4h`, `TF_BLOCKER_ENABLED=0` |
+| Типы | `BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (`LEVEL_CROSS_UP` выключен) |
+| Агент | в `.env.example` — `rules`; живой стол — `llm`, при ошибке откат на rules |
+
+### Demo и paper-shadow
+
+`paper-shadow` — локальное зеркало Demo-позиций для ATR-выходов, TP1/BE/trailing, риск-состояния и истории графика. Это не отдельный биржевой баланс.
+
+1. Денежный итог: [`/equity`](http://127.0.0.1:8080/equity) — текущий Demo equity.
+2. Реальные исполнения: [`/fills`](http://127.0.0.1:8080/fills?limit=100) — Bitget `exec_pnl` и комиссии.
+3. Локальная история стратегии: [`/history`](http://127.0.0.1:8080/history?limit=200) и вкладка **Trade history** — расчёт из `data/paper_fills.jsonl`.
+
+При расхождении paper `realized_pnl` и hub `exec_pnl` денежным результатом считается hub. Paper-значение в отчётах должно быть явно подписано как локальная оценка.
 
 ```bash
 cp .env.example .env
@@ -39,3 +50,5 @@ docker compose up -d --build
 Windows: `.\start.ps1`. Смоки без сети: `.\test.ps1`. Полная таблица риска и API — в английском README и `docs/`.
 
 Публичный лог **UTA Demo** этого стола (не live mainnet, не paper-live): [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv). Поля чеклиста Track 1: timestamp, pair, direction, price, quantity, account balance change. Регенерация: `python scripts/export_paper_log.py --from-desk`.
+
+Наблюдаемая валидация: [`docs/evidence/s2_validation.md`](docs/evidence/s2_validation.md). Готовый пятичастный текст официальной формы: [`docs/S2_FORM_COPY.md`](docs/S2_FORM_COPY.md).

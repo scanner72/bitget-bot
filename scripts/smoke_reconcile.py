@@ -101,6 +101,87 @@ def main() -> int:
             "exit_status",
         )
 
+    # Bitget /trade/fills ignores ?symbol= — client must drop other pairs.
+    from exec.bitget_hub import filter_fill_rows
+
+    mixed = [
+        {
+            "symbol": "TRXUSDT",
+            "tradeSide": "close_short",
+            "posSide": "short",
+            "execPrice": "0.33581",
+            "execQty": "1499",
+            "execPnl": "-3.56762",
+            "orderId": "trx-oid",
+            "execId": "trx-fill",
+            "createdTime": 1789550208077,
+        },
+        {
+            "symbol": "NEARUSDT",
+            "tradeSide": "close_short",
+            "posSide": "short",
+            "execPrice": "0.33581",
+            "execQty": "1499",
+            "execPnl": "-3.56762",
+            "orderId": "near-wrong-oid",
+            "execId": "near-wrong-fill",
+            "createdTime": 1789550208077,
+        },
+        {
+            "symbol": "NEARUSDT",
+            "tradeSide": "close_short",
+            "posSide": "short",
+            "execPrice": "2.407",
+            "execQty": "212",
+            "execPnl": "-13.568",
+            "orderId": "near-oid",
+            "execId": "near-fill",
+            "createdTime": 1789550208077,
+        },
+    ]
+    kept = filter_fill_rows(mixed, "NEAR/USDT:USDT")
+    _assert(len(kept) == 2, kept)
+    _assert(all(r["symbol"] == "NEARUSDT" for r in kept), kept)
+
+    class _FillClient:
+        def fills(self, **kwargs):  # noqa: ARG002
+            return {"list": mixed}
+
+    near_pos = {
+        "symbol": "NEAR/USDT:USDT",
+        "side": "short",
+        "entry_price": 2.343,
+        "qty": 213.4,
+        "opened_ts": "2026-09-16T08:15:38+00:00",
+        "meta": {"hub_qty": "212"},
+    }
+    with patch("exec.bitget_hub.BitgetUtaClient.from_env", return_value=_FillClient()):
+        px, extras = rec_mod._close_from_exchange(near_pos)
+    print("near close from mixed fills", px, extras)
+    _assert(px is not None and abs(float(px) - 2.407) < 1e-9, px)
+    _assert(abs(float(extras.get("hub_exec_pnl") or 0) - (-13.568)) < 1e-6, extras)
+    _assert(abs(float(extras.get("hub_close_qty") or 0) - 212) < 1e-6, extras)
+    _assert(int(extras.get("hub_fills_skipped_other_symbol") or 0) >= 1, extras)
+    _assert(extras.get("hub_close_qty_match") == "hub_qty", extras)
+
+    wrong_only = {
+        "symbol": "NEAR/USDT:USDT",
+        "side": "short",
+        "entry_price": 2.343,
+        "opened_ts": "2026-09-16T08:15:38+00:00",
+        "meta": {"hub_qty": "212"},
+    }
+
+    class _WrongQtyClient:
+        def fills(self, **kwargs):  # noqa: ARG002
+            return {"list": [mixed[1]]}
+
+    with patch("exec.bitget_hub.BitgetUtaClient.from_env", return_value=_WrongQtyClient()):
+        px_bad, extras_bad = rec_mod._close_from_exchange(wrong_only)
+    print("near qty mismatch", px_bad, extras_bad)
+    _assert(px_bad is None, px_bad)
+    _assert(extras_bad.get("close_price_source") == "rejected_qty_mismatch", extras_bad)
+
     print("smoke_reconcile OK")
     return 0
 

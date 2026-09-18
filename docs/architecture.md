@@ -20,7 +20,7 @@ flowchart LR
 
 | Path | What it does |
 |------|----------------|
-| `ingest/bitget_ws.py`, `bitget_ohlcv.py`, `candle_cache.py` | Public WS candles/tickers (`MARKET_DATA_MODE=ws`) + REST bootstrap. No keys. Cache is the configured TF (`TIMEFRAME=15m`), not a 1m/5m/15m stack. |
+| `ingest/bitget_ws.py`, `bitget_ohlcv.py`, `candle_cache.py` | Public WS candles/tickers (`MARKET_DATA_MODE=ws`) + REST bootstrap. No keys. Cache is `TIMEFRAMES=15m,1h,4h`. |
 | `ingest/universe.py` | Auto-scan USDT-M swaps: crypto + rToken (`SCAN_CRYPTO_TOP=70`, `SCAN_RTOKEN_TOP=30`) in paper/live. `hub_demo` scans the **full** Demo instrument catalog. |
 | `signals/engine.py`, `signals/divergence/` | Wilder RSI 14, swing pivots, `BULLISH_DIV` / `BEARISH_DIV` / `LEVEL_CROSS_*`. |
 | `desk/` | Poll loop: candles → signals → `data/candidates.jsonl` → decide → gate → router. Decisions are hashed in `desk/decision_log.py`. |
@@ -39,6 +39,16 @@ flowchart LR
 | `live` | Blocked unless `BITGET_ALLOW_LIVE=1`. Not for the hackathon demo. |
 
 `PAPER_FALLBACK=0` (default): `hub_demo` scans **all** symbols in the Bitget Demo instrument catalog (not public top-N). `PAPER_FALLBACK=1` restores paper-live fills at live mark for names missing on Demo. That PnL is a separate book from Demo equity.
+
+### Accounting boundaries
+
+In `hub_demo`, Bitget is the source of truth for money and whether a position exists:
+
+- `GET /equity`: authoritative Demo equity and unrealized PnL.
+- `GET /fills`: authoritative exchange execution PnL (`exec_pnl`) and fees.
+- `data/paper_positions.json` / `data/paper_fills.jsonl`: local paper shadow for exit state, risk bookkeeping and UI history.
+
+The shadow follows Demo orders but is not guaranteed to reproduce exchange PnL exactly. Reconciliation closes local ghosts; it does not turn a locally calculated `realized_pnl` into a Bitget wallet value. Reports must keep Demo and shadow values separately labeled.
 
 ## Ports
 

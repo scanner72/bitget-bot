@@ -233,10 +233,12 @@ def update_trailing_sl(
         # P1 hard BE: once trailing is active, never allow SL on losing side of entry
         new_sl = _clamp_sl_to_breakeven(new_sl, entry, is_long=is_long, protect=True)
 
-    updates: dict[str, Any] = {
-        "trail_price": new_trail,
-        "trailing_active": trailing_active,
-    }
+    updates: dict[str, Any] = {}
+    epsilon = entry * 0.0000001
+    if prev_trail_f is None or abs(new_trail - prev_trail_f) > epsilon:
+        updates["trail_price"] = new_trail
+    if trailing_active != bool(_pos_get(pos, "trailing_active", False)):
+        updates["trailing_active"] = trailing_active
     if abs(new_sl - sl) > entry * 0.00001:
         updates["sl"] = new_sl
     return updates

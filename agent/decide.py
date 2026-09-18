@@ -129,14 +129,14 @@ def _allowed_types() -> list[str] | None:
 
 
 def _rsi_long_max() -> float:
-    return _env_float("RSI_LONG_MAX", 30.0)
+    return _env_float("RSI_LONG_MAX", 0.0)
 
 
 def _algorithm_spec(context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Live decide_rules + type filter numbers for the LLM (no secrets)."""
     overbought, oversold = _rsi_thresholds()
     return {
-        "timeframe": "15m",
+        "timeframe": str(context.get("timeframe") or "15m") if context else "15m",
         "rsi_length": 14,
         "pivot_lookback_left": 5,
         "pivot_lookback_right": 5,
@@ -191,15 +191,15 @@ def build_llm_messages(
     rsi_long = float(spec["rsi_long_max"])
     long_zone = (
         f"7. long AND rsi_long_max ({rsi_long:.0f}) > 0 AND rsi > {rsi_long:.0f} "
-        f"→ SKIP (rsi_long_zone). This is the only 'RSI not low enough' rule. "
-        f"It applies to longs only. Shorts have no RSI_LONG_MAX."
+        f"→ SKIP (rsi_long_zone)."
         if rsi_long > 0
-        else "7. rsi_long_max is 0/off — do not skip longs for a mid RSI."
+        else "7. rsi_long_max is off — do not skip longs for a mid RSI. A long with rsi 20–69 is valid."
     )
     size = float(spec["proposed_size_usd"])
-    system = f"""You are decide() for the Bitget S2 Divergent desk (UTA Demo execution + local paper shadow). You do not search for signals. The candidate is already a confirmed 15m detector event (RSI 14, pivot lookback 5 left / 5 right). Confirmation, structure, and "is this a real divergence" are done. Your job is the same as decide_rules() in agent/decide.py.
+    cand_tf = str((candidate or {}).get("timeframe") or (context or {}).get("timeframe") or "15m")
+    system = f"""You are decide() for the Bitget S2 Divergent desk (UTA Demo execution + local paper shadow). You do not search for signals. The candidate is already a confirmed {cand_tf} detector event (RSI 14, pivot lookback 5 left / 5 right). Confirmation, structure, and "is this a real divergence" are done. Your job is the same as decide_rules() in agent/decide.py.
 
-Apply ONLY this algorithm. Do not add filters. Forbidden extra reasons (never SKIP for these): weak/low-conviction, unconfirmed, late entry, price already through/below/above level, poor risk/reward, 15m noise, wait for HTF, RSI not oversold/overbought enough (except the numbered RSI rules below), "be conservative", "paper trading favors waiting". Demo/paper is the venue, not a SKIP reason.
+Apply ONLY this algorithm. Do not add filters. Forbidden extra reasons (never SKIP for these): weak/low-conviction, unconfirmed, late entry, price already through/below/above level, poor risk/reward, noise, wait for HTF, RSI not oversold/overbought enough (except the numbered RSI rules below), "be conservative", "paper trading favors waiting". Demo/paper is the venue, not a SKIP reason.
 
 Actions: ENTER or SKIP only. Never REDUCE on a new candidate (exits are ATR TP1 → BE/trail, TP2, SL, dollar-stop, stale_no_tp1 — not you).
 
@@ -221,7 +221,7 @@ Hard SKIP, in order:
 5. short while allow_short is false
 6. long AND rsi >= rsi_overbought ({float(spec['rsi_overbought']):.0f}) → SKIP (rsi_extreme_long)
    short AND rsi <= rsi_oversold ({float(spec['rsi_oversold']):.0f}) → SKIP (rsi_extreme_short)
-   A short with rsi 40–69 is valid. A long with rsi 31–69 is NOT, if rsi_long_max is on.
+   A short with rsi 40–69 is valid. A long with rsi 20–69 is valid. Shorts have no RSI_LONG_MAX restriction.
 {long_zone}
 
 If none of the SKIP rules fired → ENTER.
@@ -323,8 +323,8 @@ def decide_rules(
             "rules_fired": rules,
         }
 
-    # v1: longs only in RSI zone (pairs.rsi_long_max default 30)
-    rsi_long_max = _env_float("RSI_LONG_MAX", 30.0)
+    # Longs only in RSI zone if explicitly configured (> 0, default 0 = off)
+    rsi_long_max = _rsi_long_max()
     if side == "long" and rsi_long_max > 0 and rsi > rsi_long_max:
         rules.append("rsi_long_zone")
         return {

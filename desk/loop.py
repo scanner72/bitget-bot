@@ -8,7 +8,7 @@ Config from env / .env:
   SCAN_RTOKEN_TOP    default 30
   MARKET_DATA_MODE   ws|rest (default ws) — public candles via WebSocket
   POLL_SEC           rest poll interval / exit cadence hint
-  TIMEFRAME          default 15m
+  TIMEFRAMES         comma list, default 15m,1h,4h (TIMEFRAME accepted as alias)
   ONCE=1             single REST pass then exit
   OHLCV_LIMIT        default 200
 
@@ -55,6 +55,7 @@ DEFAULT_PAIR_CONFIG = {
 class LoopConfig:
     symbols: list[str]
     timeframe: str = "15m"
+    timeframes: list[str] = field(default_factory=lambda: ["15m"])
     poll_sec: float = 60.0
     once: bool = False
     ohlcv_limit: int = 200
@@ -102,7 +103,11 @@ def load_config(env_path: Path | None = None) -> LoopConfig:
     symbols = [normalize_symbol(p) for p in raw_symbols.split(",") if p.strip()]
     if not symbols:
         symbols = ["BTC/USDT:USDT"]
-    timeframe = os.getenv("TIMEFRAME", "15m").strip() or "15m"
+    raw_tf = os.getenv("TIMEFRAMES", "") or os.getenv("TIMEFRAME", "15m")
+    parsed_tfs = [t.strip().lower() for t in raw_tf.split(",") if t.strip()]
+    if not parsed_tfs:
+        parsed_tfs = ["15m"]
+    timeframe = parsed_tfs[0]
     try:
         poll_sec = float(os.getenv("POLL_SEC", "60") or "60")
     except ValueError:
@@ -123,6 +128,7 @@ def load_config(env_path: Path | None = None) -> LoopConfig:
     return LoopConfig(
         symbols=list(symbols),
         timeframe=timeframe,
+        timeframes=parsed_tfs,
         poll_sec=max(1.0, poll_sec),
         once=_env_bool("ONCE", True),
         ohlcv_limit=max(50, ohlcv_limit),
@@ -142,10 +148,13 @@ def process_symbol(
     cfg: LoopConfig,
     clog: CandidateLog,
     gate: RiskGate | None = None,
+    timeframe: str | None = None,
 ) -> dict[str, Any]:
     """Fetch -> detect -> log candidate -> agent.decide -> risk. Returns summary."""
+    tf = timeframe or cfg.timeframe
     summary: dict[str, Any] = {
         "symbol": symbol,
+        "timeframe": tf,
         "ok": False,
         "bars": 0,
         "has_zones": False,
@@ -158,7 +167,7 @@ def process_symbol(
         "error": None,
     }
     try:
-        df = get_ohlcv(symbol=symbol, timeframe=cfg.timeframe, limit=cfg.ohlcv_limit)
+        df = get_ohlcv(symbol=symbol, timeframe=tf, limit=cfg.ohlcv_limit)
         summary["bars"] = len(df)
         signal, has_zones = run_full_detection(df, cfg.pair_config or DEFAULT_PAIR_CONFIG)
         summary["has_zones"] = bool(has_zones)
@@ -168,7 +177,7 @@ def process_symbol(
         rec = candidate_from_signal(
             signal,
             symbol=symbol,
-            timeframe=cfg.timeframe,
+            timeframe=tf,
             ts=datetime.now(timezone.utc),
         )
         summary["candidate"] = rec["type"]
@@ -185,7 +194,7 @@ def process_symbol(
                 decisions_path=cfg.decisions_path,
                 context={
                     "symbol": symbol,
-                    "timeframe": cfg.timeframe,
+                    "timeframe": tf,
                     "ohlcv_df": df,
                     "ohlcv_limit": cfg.ohlcv_limit,
                     "session_id": ensure_session_id(),
@@ -255,14 +264,21 @@ def run_pass(
     gate: RiskGate | None = None,
     *,
     symbols: list[str] | None = None,
+    timeframes: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     use = symbols if symbols is not None else cfg.symbols
-    results = [process_symbol(sym, cfg, clog, gate) for sym in use]
+    use_tfs = timeframes or cfg.timeframes
+    results = []
+    for tf in use_tfs:
+        for sym in use:
+            results.append(process_symbol(sym, cfg, clog, gate, timeframe=tf))
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     parts = []
     for r in results:
+        tf_s = f"[{r.get('timeframe', cfg.timeframe)}]"
+        sym_name = to_display(r['symbol']) or r['symbol']
         if r["error"]:
-            parts.append(f"{to_display(r['symbol']) or r['symbol']}:ERR({r['error']})")
+            parts.append(f"{sym_name}{tf_s}:ERR({r['error']})")
         elif r["candidate"]:
             flag = "LOG" if r["logged"] else ("DEDUP" if r["deduped"] else "CAND")
             agent_bit = ""
@@ -277,13 +293,13 @@ def run_pass(
             elif r.get("action") == "SKIP":
                 risk_bit = f" skip_reason={r.get('risk_reason')}"
             parts.append(
-                f"{to_display(r['symbol']) or r['symbol']}:{r['candidate']}[{flag}] zones={r['has_zones']} "
+                f"{sym_name}{tf_s}:{r['candidate']}[{flag}] zones={r['has_zones']} "
                 f"bars={r['bars']}{agent_bit}{risk_bit}"
             )
         else:
-            parts.append(f"{to_display(r['symbol']) or r['symbol']}:EMPTY zones={r['has_zones']} bars={r['bars']}")
+            parts.append(f"{sym_name}{tf_s}:EMPTY zones={r['has_zones']} bars={r['bars']}")
     logged_n = sum(1 for r in results if r.get("logged"))
-    print(f"[{ts}] pass symbols={len(results)} logged={logged_n} | " + " | ".join(parts))
+    print(f"[{ts}] pass symbols={len(use)} tfs={len(use_tfs)} logged={logged_n} | " + " | ".join(parts))
     return results
 
 
@@ -327,7 +343,7 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
     session_id = ensure_session_id()
     print(
         f"desk.loop start mode={mode} market_data={md_mode} scan={cfg.scan_mode} "
-        f"tf={cfg.timeframe} "
+        f"tf={cfg.timeframe} tfs={','.join(cfg.timeframes)} "
         f"ohlcv_limit={cfg.ohlcv_limit} "
         f"crypto_top={cfg.scan_crypto_top} rtoken_top={cfg.scan_rtoken_top} "
         f"refresh={cfg.scan_refresh_sec}s "
@@ -426,16 +442,17 @@ def _run_loop_ws(
     last_blocker_ts: float,
 ) -> int:
     """Event-driven desk: process on candle bar_close; REST fallback if WS unhealthy."""
-    bar_q: queue.Queue[str] = queue.Queue()
-    pending: set[str] = set()
+    bar_q: queue.Queue[tuple[str, str]] = queue.Queue()
+    pending: set[tuple[str, str]] = set()
     pending_lock = threading.Lock()
 
-    def _on_bar_close(symbol: str) -> None:
+    def _on_bar_close(symbol: str, tf: str = "15m") -> None:
+        item = (symbol, tf)
         with pending_lock:
-            if symbol in pending:
+            if item in pending:
                 return
-            pending.add(symbol)
-        bar_q.put(symbol)
+            pending.add(item)
+        bar_q.put(item)
 
     from risk.tick_stops import QuoteBus, apply_tick_quotes, tick_stops_enabled
 
@@ -452,6 +469,7 @@ def _run_loop_ws(
 
     ws = BitgetPublicWs(
         timeframe=cfg.timeframe,
+        timeframes=cfg.timeframes,
         on_bar_close=_on_bar_close,
         on_quote=_on_quote if tick_on else None,
         subscribe_ticker=True,
@@ -460,7 +478,7 @@ def _run_loop_ws(
     )
 
     symbols, cache = _active_symbols(cfg, cache)
-    print(f"[WS] starting n={len(symbols)} tick_stops={tick_on} (bootstrap in background)")
+    print(f"[WS] starting n={len(symbols)} tfs={len(cfg.timeframes)} tick_stops={tick_on} (bootstrap in background)")
     ws.start(symbols)
     last_universe = time.time()
     last_exit = 0.0
@@ -505,14 +523,14 @@ def _run_loop_ws(
             drained = 0
             while drained < 20:
                 try:
-                    sym = bar_q.get_nowait()
+                    sym, tf = bar_q.get_nowait()
                 except queue.Empty:
                     break
                 drained += 1
                 with pending_lock:
-                    pending.discard(sym)
+                    pending.discard((sym, tf))
                 try:
-                    summary = process_symbol(sym, cfg, clog, gate)
+                    summary = process_symbol(sym, cfg, clog, gate, timeframe=tf)
                     flag = "ok"
                     if summary.get("error"):
                         flag = f"ERR:{summary['error']}"
@@ -525,11 +543,11 @@ def _run_loop_ws(
                     else:
                         flag = "EMPTY"
                     print(
-                        f"[WS][bar_close] {to_display(sym) or sym}: {flag} "
+                        f"[WS][bar_close] {to_display(sym) or sym}[{tf}]: {flag} "
                         f"bars={summary.get('bars')}"
                     )
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[WS][bar_close] {sym} error: {exc}")
+                    print(f"[WS][bar_close] {sym}[{tf}] error: {exc}")
 
             # Exits on a short cadence (marks from WS cache)
             if time.time() - last_exit >= max(5.0, min(30.0, float(cfg.poll_sec))):

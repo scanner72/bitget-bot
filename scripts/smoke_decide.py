@@ -17,6 +17,12 @@ if str(ROOT) not in sys.path:
 
 from agent.decide import decide  # noqa: E402
 from desk.pipeline import evaluate_candidate  # noqa: E402
+from exec.account import PaperAccount  # noqa: E402
+from exec.paper import (  # noqa: E402
+    DEFAULT_FILLS_PATH,
+    PaperBook,
+    reject_dummy_smoke_on_live_book,
+)
 from risk.gate import RiskGate, RiskLimits, RiskState  # noqa: E402
 
 
@@ -34,6 +40,7 @@ def main() -> int:
     os.environ["RISK_USD_PER_TRADE"] = "2"
     os.environ["MAX_NOTIONAL_USD"] = "100"
     os.environ["EXEC_MODE"] = "paper"
+    os.environ["AGENT_MODE"] = "rules"
     os.environ.pop("AGENT_LLM", None)
 
     bull = {
@@ -123,6 +130,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="bitget_decide_smoke_") as tmp:
         tmp_path = Path(tmp)
         decisions = tmp_path / "decisions.jsonl"
+        fills = tmp_path / "paper_fills.jsonl"
+        live_fills = DEFAULT_FILLS_PATH
+        live_before = live_fills.read_text(encoding="utf-8") if live_fills.exists() else ""
         gate = RiskGate(
             limits=RiskLimits(
                 max_notional_usd=100.0,
@@ -136,12 +146,36 @@ def main() -> int:
             state_path=tmp_path / "risk_state.json",
             persist=False,
         )
+        acct = PaperAccount.load(
+            tmp_path / "paper_account.json",
+            start_balance=10000.0,
+            persist=True,
+        )
+        book = PaperBook(
+            gate=gate,
+            fills_file=fills,
+            positions_file=tmp_path / "paper_positions.json",
+            account=acct,
+        )
 
-        out_enter = evaluate_candidate(bull, gate, decisions_path=decisions)
+        try:
+            reject_dummy_smoke_on_live_book("BTC/USDT:USDT", 65000.0, live_fills)
+            raise AssertionError("dummy BTC@65000 must be blocked on live fills path")
+        except ValueError as exc:
+            _assert("65000" in str(exc), str(exc))
+        reject_dummy_smoke_on_live_book("BTC/USDT:USDT", 65000.0, fills)
+
+        out_enter = evaluate_candidate(
+            bull, gate, decisions_path=decisions, paper_book=book
+        )
         print(f"pipeline ENTER: action={out_enter['action']} allowed={out_enter['allowed']}")
         _assert(out_enter["action"] == "ENTER", out_enter)
         _assert(out_enter["allowed"] is True, out_enter)
         _assert(out_enter["risk"] is not None, out_enter)
+        _assert(fills.exists(), "isolated paper_fills.jsonl missing")
+        fill0 = json.loads(fills.read_text(encoding="utf-8").strip().splitlines()[0])
+        _assert(fill0["price"] == 65000.0, fill0)
+        _assert(fill0["symbol"] == bull["symbol"], fill0)
 
         skip_cand = {
             "symbol": "XRP/USDT:USDT",
@@ -149,10 +183,18 @@ def main() -> int:
             "price": 0.5,
             "rsi": 90.0,
         }
-        out_skip = evaluate_candidate(skip_cand, gate, decisions_path=decisions)
+        out_skip = evaluate_candidate(
+            skip_cand, gate, decisions_path=decisions, paper_book=book
+        )
         print(f"pipeline SKIP: action={out_skip['action']} risk={out_skip['risk']}")
         _assert(out_skip["action"] == "SKIP", out_skip)
         _assert(out_skip["risk"] is None, out_skip)
+
+        live_after = live_fills.read_text(encoding="utf-8") if live_fills.exists() else ""
+        _assert(
+            live_after == live_before,
+            "smoke_decide must not write live data/paper_fills.jsonl",
+        )
 
         lines = decisions.read_text(encoding="utf-8").strip().splitlines()
         _assert(len(lines) == 2, f"expected 2 JSONL rows, got {len(lines)}")

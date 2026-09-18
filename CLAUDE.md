@@ -1,5 +1,7 @@
 # Claude / Cursor notes — Divergent Agent Desk
 
+Live numbers: `.cursor/rules/desk-config.mdc` (overrides v1 and older notes).
+
 ## Run
 
 ```bash
@@ -11,10 +13,10 @@ Local: `.venv` then `python scripts/run_api.py` and `python scripts/run_signal_l
 
 ## Modules
 
-- `ingest/` — public WS + REST, `TIMEFRAME=15m`
+- `ingest/` — public WS + REST, `TIMEFRAMES=15m,1h,4h`
 - `signals/engine.py`, `signals/divergence/` — RSI 14, div + level-cross
-- `agent/decide.py` — `rules` or `llm` (Groq OpenAI-compatible)
-- `risk/gate.py`, `sizing.py`, `exits.py`
+- `agent/decide.py` — `rules` or `llm` (Groq OpenAI-compatible). `RSI_LONG_MAX=0`
+- `risk/gate.py` (`MAX_SAME_DIRECTION_POSITIONS=4`), `sizing.py`, `exits.py`
 - `exec/bitget_hub.py`, `paper.py`, `router.py`
 - `api/app.py` — `/health` returns `ok`, not `status`
 

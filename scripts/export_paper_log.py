@@ -294,7 +294,12 @@ def build_rows(
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(ALL_COLUMNS), extrasaction="ignore")
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=list(ALL_COLUMNS),
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow({k: row.get(k, "") for k in ALL_COLUMNS})
@@ -306,6 +311,30 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
         for row in rows:
             clean = {k: row.get(k, "") for k in ALL_COLUMNS if not _SECRET_KEY.search(k)}
             fh.write(json.dumps(clean, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _strip_secret_keys(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(k): _strip_secret_keys(v)
+            for k, v in value.items()
+            if not _SECRET_KEY.search(str(k))
+        }
+    if isinstance(value, list):
+        return [_strip_secret_keys(v) for v in value]
+    return value
+
+
+def refresh_desk_fixture(source: Path = DEFAULT_FILLS) -> int:
+    """Publish a sanitized Demo-linked native fixture from gitignored runtime fills."""
+    raw = _load_json_records(source)
+    kept = keep_uta_demo_fills(raw)
+    DESK_FILLS.parent.mkdir(parents=True, exist_ok=True)
+    with DESK_FILLS.open("w", encoding="utf-8") as fh:
+        for row in kept:
+            clean = _strip_secret_keys(row)
+            fh.write(json.dumps(clean, ensure_ascii=False, separators=(",", ":")) + "\n")
+    return len(kept)
 
 
 def resolve_inputs(
@@ -403,6 +432,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Read this desk's committed fills (fixtures/paper_fills.desk.jsonl).",
     )
     ap.add_argument(
+        "--refresh-desk-fixture",
+        action="store_true",
+        help="Sanitize current data/paper_fills.jsonl into the committed Demo fixture, then export it.",
+    )
+    ap.add_argument(
         "--demo-only",
         action="store_true",
         help="Keep only UTA Demo positions (hub_demo + shadow closes of those). Drop paper-live.",
@@ -418,16 +452,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Also write paper_trading_log.sample.csv / .jsonl",
     )
     args = ap.parse_args(argv)
-    if args.from_sample and args.from_desk:
-        print("error: use only one of --from-sample / --from-desk")
+    source_modes = sum(
+        bool(v) for v in (args.from_sample, args.from_desk, args.refresh_desk_fixture)
+    )
+    if source_modes > 1:
+        print("error: use only one of --from-sample / --from-desk / --refresh-desk-fixture")
         return 2
+    if args.refresh_desk_fixture:
+        if not DEFAULT_FILLS.exists():
+            print(f"error: runtime fills not found: {DEFAULT_FILLS}")
+            return 1
+        refreshed = refresh_desk_fixture(DEFAULT_FILLS)
+        print(f"refreshed {DESK_FILLS} rows={refreshed}")
 
     fills, decisions, default_label, origin = resolve_inputs(
         fills_path=args.fills,
         decisions_path=args.decisions,
         from_sample=bool(args.from_sample),
-        from_desk=bool(args.from_desk),
+        from_desk=bool(args.from_desk or args.refresh_desk_fixture),
     )
+    if args.refresh_desk_fixture:
+        origin = "refreshed_desk_fixture"
     if args.fills is not None and not args.from_sample and not args.from_desk:
         fills = args.fills
         origin = "cli"
@@ -444,7 +489,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     start = start_balance_from_env(args.start_balance)
-    demo_only = bool(args.demo_only or args.from_desk) and not bool(args.include_paper_live)
+    demo_only = bool(
+        args.demo_only or args.from_desk or args.refresh_desk_fixture
+    ) and not bool(args.include_paper_live)
     if args.from_sample:
         demo_only = False
     rows = export_log(

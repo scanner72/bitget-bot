@@ -8,7 +8,7 @@ Fail the pass if any box is false.
 - [ ] Config tables = `.env.example` live values, not commented legacy or another repo
 - [ ] If gitignored `.env` differs (e.g. `AGENT_MODE=llm`), README says so
 - [ ] Mermaid matches real modules (`agent/decide.py`, `risk/gate.py`, `exec/router.py`, …)
-- [ ] Timeframes / RSI / position caps match config (`TIMEFRAME=15m`, `RSI_LONG_MAX`, `MAX_POSITIONS`)
+- [ ] Timeframes / RSI / position caps match config (`TIMEFRAMES=15m,1h,4h`, `RSI_LONG_MAX=0`, `MAX_POSITIONS=15`, `MAX_SAME_DIRECTION_POSITIONS=4`)
 - [ ] No “no keys required” when default exec places exchange orders
 - [ ] No competitor matrix, OS fluff matrix, or “Why vs grid bots” essay
 

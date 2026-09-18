@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping
 
 import pandas as pd
 
-# Donor defaults
+# Donor defaults (crypto)
 ATR_PERIOD = 14
 ATR_FLOOR_PCT = 0.02  # max(atr, entry * 0.02)
 SL_ATR_MULT = 1.0
@@ -14,6 +15,38 @@ TP1_ATR_MULT = 1.5
 TP2_ATR_MULT = 2.5
 ATR_PCT_MIN = 0.3  # percent
 ATR_PCT_MAX = 6.0  # percent
+
+
+def _env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None or str(v).strip() == "":
+        return default
+    try:
+        return float(v)
+    except ValueError:
+        return default
+
+
+def atr_spec_for_symbol(symbol: str) -> dict[str, Any]:
+    """Crypto vs rToken/stock ATR. Stocks: 1h bars, no 2% floor, min 0.5%."""
+    from ingest.universe import is_rtoken_symbol
+
+    if is_rtoken_symbol(symbol):
+        tf = (os.getenv("RTOKEN_ATR_TF") or "1h").strip().lower() or "1h"
+        return {
+            "kind": "rtoken",
+            "floor_pct": _env_float("RTOKEN_ATR_FLOOR_PCT", 0.0),
+            "min_pct": _env_float("RTOKEN_ATR_PCT_MIN", 0.5),
+            "max_pct": _env_float("ATR_PCT_MAX", ATR_PCT_MAX),
+            "timeframe": tf,
+        }
+    return {
+        "kind": "crypto",
+        "floor_pct": ATR_FLOOR_PCT,
+        "min_pct": _env_float("ATR_PCT_MIN", ATR_PCT_MIN),
+        "max_pct": _env_float("ATR_PCT_MAX", ATR_PCT_MAX),
+        "timeframe": None,
+    }
 
 
 def compute_atr(

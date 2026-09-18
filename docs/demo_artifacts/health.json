@@ -4,5 +4,8 @@
   "exec_mode": "hub_demo",
   "hub_demo": true,
   "bitget_demo": true,
-  "hub_sync_exchange_sl": true
+  "hub_sync_exchange_sl": true,
+  "paper_fallback": false,
+  "agent_mode": "llm",
+  "openai_model": "qwen3.8-max"
 }

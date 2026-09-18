@@ -20,10 +20,11 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 | Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close at `HUB_LEVERAGE=20`, exchange SL+TP2 |
 | Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
 | Scan | Full Bitget **Demo UTA** catalog (`hub_demo`). Public top-N is not used. `PAPER_FALLBACK=0` |
-| TF | `TIMEFRAME=15m` only. `TF_BLOCKER_ENABLED=0` (do not ban the only TF) |
-| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_UP,LEVEL_CROSS_DOWN` |
-| Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm` (Groq OpenAI-compatible). Any LLM failure falls back to rules |
-| BTC filters | Regime **1h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on |
+| TF | `TIMEFRAMES=15m,1h,4h`. `TF_BLOCKER_ENABLED=0` |
+| Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (no `LEVEL_CROSS_UP`) |
+| RSI long zone | `RSI_LONG_MAX=0` (off) |
+| Agent | `.env.example` default `AGENT_MODE=rules`. Running desk uses `llm`. Any LLM failure falls back to rules |
+| BTC filters | Regime **4h**, EMA50 off, momentum 1.2% / 4h. Pair blocker on. Correlation cap 4 same-direction |
 
 Public candles need no keys. **Demo orders need Bitget Demo API keys in local `.env` (never commit).**
 
@@ -33,9 +34,9 @@ Public candles need no keys. **Demo orders need Bitget Demo API keys in local `.
 
 S2’s premise: tokenized US stocks and crypto perps trade **7×24**. Humans sleep; this desk does not.
 
-**Claim:** RSI-momentum divergence plus level-cross on a single `15m` book, gated by `risk/gate.py` and sized to stop, is enough to run an autonomous **event → decision → Bitget Demo UTA fill** loop through weekends — without banning the only timeframe, without mixing paper-live PnL into Demo equity, and without turning the agent into a research council or on-chain attester.
+**Claim:** RSI-momentum divergence plus `LEVEL_CROSS_DOWN` on `15m`/`1h`/`4h`, gated by `risk/gate.py` and sized to stop, is enough to run an autonomous **event → decision → Bitget Demo UTA fill** loop through weekends — without a TF ban, without mixing paper-live PnL into Demo equity, and without turning the agent into a research council or on-chain attester.
 
-rToken perps stay open on weekends (1h ATR, no crypto 2% floor). Crypto stays on `15m`. `TF_BLOCKER_ENABLED=0` so a dead 15m PnL cannot close the book. Pair blocker stays on.
+rToken perps stay open on weekends (1h ATR, no crypto 2% floor). `TF_BLOCKER_ENABLED=0`. Pair blocker stays on. `RSI_LONG_MAX=0`.
 
 | Keep | Rejected — [research-graveyard](docs/research-graveyard.md) |
 |------|------|
@@ -70,11 +71,12 @@ flowchart LR
 |---------|-----|-----------|
 | Risk per trade (to SL) | `RISK_USD_PER_TRADE` | `10` |
 | Max / min notional | `MAX_NOTIONAL_USD` / `MIN_NOTIONAL_USD` | `500` / `10` |
-| Daily loss kill | `MAX_DAILY_LOSS_USD` | `50` (code default if unset) |
+| Daily loss kill | `MAX_DAILY_LOSS_USD` | `150` |
 | Max positions | `MAX_POSITIONS` | `15` |
+| Same-direction cap | `MAX_SAME_DIRECTION_POSITIONS` | `4` |
 | Cooldown | `COOLDOWN_SEC` | `900` |
 | Dollar stop | `MAX_LOSS_PCT_OF_MARGIN` | `40` |
-| Hub leverage | `HUB_LEVERAGE` | `20` (exchange; `PAPER_LEVERAGE` stays 1 — size_usd is notional) |
+| Hub leverage | `HUB_LEVERAGE` | cap `20`, adaptive `35/SL%` (`PAPER_LEVERAGE` stays 1) |
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` (3 consecutive losses / WR 30 / 48h) |
 | TF blocker | `TF_BLOCKER_ENABLED` | `0` |
 
@@ -135,6 +137,14 @@ Offline smokes: `.\test.ps1` or `./test.sh`. Hub/Demo smokes need keys: `scripts
 
 Details: [docs/api-reference.md](docs/api-reference.md).
 
+### Demo money vs paper shadow
+
+`paper shadow` is the local mirror of Demo positions used for ATR exits, TP1/BE/trailing, risk state, and chart history. It is not a second exchange balance.
+
+- **Money source of truth:** [`/equity`](http://127.0.0.1:8080/equity) (current Demo equity), then [`/fills`](http://127.0.0.1:8080/fills?limit=100) (`exec_pnl` + fees from Bitget).
+- **Strategy/history view:** [`/history`](http://127.0.0.1:8080/history?limit=200) and the dashboard Trade history tab, reconstructed from `data/paper_fills.jsonl`.
+- If paper `realized_pnl` differs from hub `exec_pnl`, reports must use the hub value for money and explicitly label the paper value as an estimate.
+
 ---
 
 ## Evidence (Track 1 paper / Demo log)
@@ -144,10 +154,15 @@ Bitget S2 Trading Agent checklist: timestamp, trading pair, direction, price, qu
 | File | Role |
 |------|------|
 | [`docs/evidence/paper_trading_log.csv`](docs/evidence/paper_trading_log.csv) | Public **UTA Demo** log (**not live mainnet**, not paper-live fallback) |
+| [`docs/evidence/s2_validation.md`](docs/evidence/s2_validation.md) | Reproducible observed metrics, costs and limitations |
+| [`docs/S2_FORM_COPY.md`](docs/S2_FORM_COPY.md) | Ready-to-paste five-part S2 submission text and links |
 | [`docs/evidence/README.md`](docs/evidence/README.md) | Field map + how to regenerate |
 | [`docs/evidence/paper_trading_log.sample.csv`](docs/evidence/paper_trading_log.sample.csv) | `SIMULATED_DEMO` snapshot from native fills |
 
 ```bash
+python scripts/capture_demo_artifacts.py
+python scripts/export_paper_log.py --refresh-desk-fixture
+python scripts/generate_s2_validation.py
 python scripts/export_paper_log.py --from-desk      # UTA Demo fills only (default)
 python scripts/export_paper_log.py                  # local data/paper_fills.jsonl, else desk fixture
 python scripts/export_paper_log.py --from-sample    # tiny offline fixture, no keys

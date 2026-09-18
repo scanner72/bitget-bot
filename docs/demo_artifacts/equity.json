@@ -1,0 +1,35 @@
+{
+  "start_balance": 10000.0,
+  "cash": 9878.54809565,
+  "realized_pnl": -130.6237900800005,
+  "open_positions_notional": 999.9999999999982,
+  "equity": 9869.62350991,
+  "currency": "USDT",
+  "total_unrealized_pnl": 0.24729999,
+  "equity_mtm": 9869.62350991,
+  "source": "hub_demo",
+  "hub_account_equity": 9869.62350991,
+  "hub_available": 9878.54809565,
+  "hub_usdt_equity": 9878.54809565,
+  "hub_unrealised_pnl": 0.24729999,
+  "demo": {
+    "equity": 9869.62350991,
+    "available": 9878.54809565,
+    "usdt_equity": 9878.54809565,
+    "unrealised_pnl": 0.24729999,
+    "start_equity": 10000.0,
+    "pnl_vs_start": -130.37649009000052
+  },
+  "paper": {
+    "start_balance": 9927.57338314,
+    "cash": 9035.830872606834,
+    "realized_pnl": 8.257489466835551,
+    "open_positions_notional": 999.9999999999982,
+    "equity": 10038.485367603163,
+    "equity_mtm": 10038.485367603163,
+    "total_unrealized_pnl": 2.6544949963319033,
+    "currency": "USDT"
+  },
+  "pnl_vs_start": -130.37649009000052,
+  "demo_equity": 9869.62350991
+}

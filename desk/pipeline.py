@@ -11,7 +11,7 @@ from agent.decide import decide
 from desk.decision_log import append_sealed_decision, ensure_session_id
 from exec.demo_universe import NotOnDemoError
 from exec.paper import PaperBook
-from exec.router import open_position
+from exec.router import DemoPriceMismatchError, open_position
 from ingest.symbols import to_display
 from risk.gate import RiskGate
 from risk.sizing import notional_from_risk
@@ -134,28 +134,48 @@ def evaluate_candidate(
             if price <= 0:
                 raise ValueError("candidate price missing/invalid for paper open")
             # ATR SL/TP sizing + volatility filter (divergent defaults)
-            from risk.atr import atr_filter_ok, compute_levels_from_df
+            from risk.atr import atr_filter_ok, atr_spec_for_symbol, compute_levels_from_df
 
             levels = None
             ohlcv_df = ctx.get("ohlcv_df")
-            if ohlcv_df is None:
+            atr_spec = atr_spec_for_symbol(str(candidate.get("symbol") or ""))
+            sig_tf = str(ctx.get("timeframe") or candidate.get("timeframe") or "15m")
+            atr_tf = str(atr_spec.get("timeframe") or sig_tf)
+            atr_df = ohlcv_df
+            if ohlcv_df is None or atr_tf != sig_tf:
                 try:
                     from ingest.bitget_ohlcv import get_ohlcv
 
-                    tf = str(ctx.get("timeframe") or candidate.get("timeframe") or "15m")
-                    ohlcv_df = get_ohlcv(
+                    atr_df = get_ohlcv(
                         symbol=str(candidate.get("symbol")),
-                        timeframe=tf,
+                        timeframe=atr_tf,
                         limit=int(ctx.get("ohlcv_limit") or 50),
                     )
                 except Exception as _atr_exc:  # noqa: BLE001
-                    print(f"[ATR] WARN fetch failed: {_atr_exc}")
-                    ohlcv_df = None
-            if ohlcv_df is not None:
-                levels = compute_levels_from_df(price, side, ohlcv_df)
+                    print(f"[ATR] WARN fetch {atr_tf} failed: {_atr_exc}")
+                    atr_df = ohlcv_df
+                    if atr_df is None:
+                        try:
+                            from ingest.bitget_ohlcv import get_ohlcv
+
+                            atr_df = get_ohlcv(
+                                symbol=str(candidate.get("symbol")),
+                                timeframe=sig_tf,
+                                limit=int(ctx.get("ohlcv_limit") or 50),
+                            )
+                        except Exception as _atr_exc2:  # noqa: BLE001
+                            print(f"[ATR] WARN fetch {sig_tf} failed: {_atr_exc2}")
+                            atr_df = None
+            if atr_df is not None:
+                levels = compute_levels_from_df(
+                    price,
+                    side,
+                    atr_df,
+                    floor_pct=float(atr_spec["floor_pct"]),
+                )
             if levels is not None:
-                _amin = float(os.getenv("ATR_PCT_MIN", "0.3") or "0.3")
-                _amax = float(os.getenv("ATR_PCT_MAX", "6.0") or "6.0")
+                _amin = float(atr_spec["min_pct"])
+                _amax = float(atr_spec["max_pct"])
                 ok_atr, atr_reason = atr_filter_ok(
                     levels["atr"], price, min_pct=_amin, max_pct=_amax
                 )
@@ -209,9 +229,10 @@ def evaluate_candidate(
                 "rationale": agent_out.get("rationale"),
                 "provisional_size_usd": provisional_size,
                 "risk_usd": risk_usd,
-                "timeframe": str(
-                    ctx.get("timeframe") or candidate.get("timeframe") or "15m"
-                ),
+                "timeframe": sig_tf,
+                "atr_tf": atr_tf,
+                "atr_kind": atr_spec.get("kind"),
+                "atr_floor_pct": atr_spec.get("floor_pct"),
             }
             if levels is not None:
                 open_meta.update(levels)
@@ -234,6 +255,9 @@ def evaluate_candidate(
         except NotOnDemoError as exc:
             paper_error = f"not_on_demo:{exc}"
             print(f"[HUB] SKIP not on demo: {exc}")
+        except DemoPriceMismatchError as exc:
+            paper_error = f"demo_price_mismatch:{exc}"
+            print(f"[HUB] SKIP price mismatch: {exc}")
         except Exception as exc:  # noqa: BLE001
             paper_error = f"{type(exc).__name__}: {exc}"
             print(f"[PAPER] ERROR open failed: {paper_error}")

@@ -38,6 +38,7 @@ _TF_CHANNEL = {
     "12h": "candle12H",
     "1d": "candle1D",
 }
+_CHANNEL_TO_TF = {v.lower(): k for k, v in _TF_CHANNEL.items()}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -79,7 +80,8 @@ class BitgetPublicWs:
         self,
         *,
         timeframe: str = "15m",
-        on_bar_close: Callable[[str], None] | None = None,
+        timeframes: list[str] | None = None,
+        on_bar_close: Callable[..., None] | None = None,
         on_quote: Callable[..., None] | None = None,
         subscribe_ticker: bool = True,
         max_channels_per_conn: int | None = None,
@@ -89,15 +91,22 @@ class BitgetPublicWs:
         load_dotenv(
             os.path.join(os.path.dirname(__file__), "..", ".env"), override=False
         )
-        self.timeframe = (timeframe or "15m").strip()
+        if timeframes:
+            self.timeframes = [t.strip().lower() for t in timeframes if t.strip()]
+        else:
+            tf_env = (timeframe or os.getenv("TIMEFRAMES", "") or os.getenv("TIMEFRAME", "15m")).strip()
+            self.timeframes = [t.strip().lower() for t in tf_env.split(",") if t.strip()]
+        if not self.timeframes:
+            self.timeframes = ["15m"]
+        self.timeframe = self.timeframes[0]
         self.channel = candle_channel(self.timeframe)
         self.on_bar_close = on_bar_close
         self.on_quote = on_quote
         self.subscribe_ticker = bool(subscribe_ticker)
-        # candle (+ optional ticker) per symbol
-        ch_per_sym = 2 if self.subscribe_ticker else 1
+        # candle per timeframe (+ optional ticker) per symbol
+        ch_per_sym = len(self.timeframes) + (1 if self.subscribe_ticker else 0)
         max_ch = max_channels_per_conn or _env_int("WS_MAX_CHANNELS_PER_CONN", 40)
-        self._symbols_per_conn = max(1, int(max_ch) // ch_per_sym)
+        self._symbols_per_conn = max(1, int(max_ch) // max(1, ch_per_sym))
         self.bootstrap_limit = max(50, int(bootstrap_limit))
         self.bootstrap_rate = max(1.0, float(bootstrap_rate))
         self._url = os.getenv("BITGET_WS_PUBLIC_URL", WS_URL).strip() or WS_URL
@@ -195,22 +204,26 @@ class BitgetPublicWs:
         delay = 1.0 / self.bootstrap_rate
         done = 0
         for sym in symbols:
-            if sym in self._bootstrapped:
-                continue
             if self._stop.is_set():
                 return
-            try:
-                df = fetch_ohlcv(
-                    symbol=sym, timeframe=self.timeframe, limit=self.bootstrap_limit
-                )
-                candle_cache.set_ohlcv(sym, self.timeframe, df)
-                self._bootstrapped.add(sym)
-                done += 1
-                if done == 1 or done % 20 == 0:
-                    print(f"[WS] bootstrap progress {done} (+{sym} bars={len(df)})")
-            except Exception as exc:  # noqa: BLE001
-                print(f"[WS] bootstrap fail {sym}: {exc}")
-            time.sleep(delay)
+            for tf in self.timeframes:
+                cache_key = f"{sym}:{tf}"
+                if cache_key in self._bootstrapped:
+                    continue
+                if self._stop.is_set():
+                    return
+                try:
+                    df = fetch_ohlcv(
+                        symbol=sym, timeframe=tf, limit=self.bootstrap_limit
+                    )
+                    candle_cache.set_ohlcv(sym, tf, df)
+                    self._bootstrapped.add(cache_key)
+                    done += 1
+                    if done == 1 or done % 20 == 0:
+                        print(f"[WS] bootstrap progress {done} (+{sym} [{tf}] bars={len(df)})")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WS] bootstrap fail {sym} [{tf}]: {exc}")
+                time.sleep(delay)
         print(f"[WS] bootstrap done new={done} total_cached={len(self._bootstrapped)}")
 
     def _thread_main(self) -> None:
@@ -317,9 +330,14 @@ class BitgetPublicWs:
             inst = to_bitget_id(sym)
             if not inst:
                 continue
-            args.append(
-                {"instType": INST_TYPE, "channel": self.channel, "instId": inst}
-            )
+            for tf in self.timeframes:
+                try:
+                    ch = candle_channel(tf)
+                    args.append(
+                        {"instType": INST_TYPE, "channel": ch, "instId": inst}
+                    )
+                except ValueError:
+                    continue
             if self.subscribe_ticker:
                 args.append(
                     {"instType": INST_TYPE, "channel": "ticker", "instId": inst}
@@ -364,7 +382,7 @@ class BitgetPublicWs:
             self._handle_ticker(symbol, data)
             return
         if channel.startswith("candle"):
-            self._handle_candle(symbol, data, action=str(action or ""))
+            self._handle_candle(symbol, channel, data, action=str(action or ""))
 
     def _handle_ticker(self, symbol: str, data: Any) -> None:
         from ingest import candle_cache
@@ -385,9 +403,10 @@ class BitgetPublicWs:
                 self._emit_quote(symbol, px, px, px)
                 return
 
-    def _handle_candle(self, symbol: str, data: Any, *, action: str = "") -> None:
+    def _handle_candle(self, symbol: str, channel: str, data: Any, *, action: str = "") -> None:
         from ingest import candle_cache
 
+        tf = _CHANNEL_TO_TF.get(channel.lower(), self.timeframe)
         rows = data if isinstance(data, list) else [data]
         # Snapshot can contain many bars — warm cache without firing bar_close spam.
         fire = action == "update"
@@ -405,7 +424,7 @@ class BitgetPublicWs:
                 continue
             closed = candle_cache.apply_candle_update(
                 symbol,
-                self.timeframe,
+                tf,
                 ts_ms=ts_ms,
                 open_=o,
                 high=h,
@@ -415,9 +434,14 @@ class BitgetPublicWs:
             )
             if fire and closed and self.on_bar_close is not None:
                 try:
-                    self.on_bar_close(symbol)
+                    self.on_bar_close(symbol, tf)
+                except TypeError:
+                    try:
+                        self.on_bar_close(symbol)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("on_bar_close %s: %s", symbol, exc)
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("on_bar_close %s: %s", symbol, exc)
+                    logger.warning("on_bar_close %s %s: %s", symbol, tf, exc)
             if fire:
                 self._emit_quote(symbol, c, h, low)
 
