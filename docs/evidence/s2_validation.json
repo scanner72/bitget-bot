@@ -6,43 +6,43 @@
   },
   "period": {
     "first": "2026-09-09T13:20:07.412654+00:00",
-    "last": "2026-09-17T14:45:46.206472+00:00",
-    "calendar_days": 9
+    "last": "2026-09-18T03:49:44.516233+00:00",
+    "calendar_days": 10
   },
   "exchange_snapshot": {
-    "demo_equity_usdt": 9869.6235,
-    "pnl_vs_start_usdt": -130.3765,
-    "return_pct": -1.3038,
-    "unrealized_pnl_usdt": 0.2473,
+    "demo_equity_usdt": 9880.5353,
+    "pnl_vs_start_usdt": -119.4647,
+    "return_pct": -1.1946,
+    "unrealized_pnl_usdt": 0.0848,
     "recent_fill_count": 100,
     "recent_fill_period": [
-      "2026-09-11T06:20:56.134000+00:00",
-      "2026-09-17T14:45:44.888000+00:00"
+      "2026-09-11T12:34:17.200000+00:00",
+      "2026-09-18T03:49:43.001000+00:00"
     ],
-    "recent_close_exec_pnl_usdt": -16.1333,
-    "recent_fill_fees_usdt": 39.4165
+    "recent_close_exec_pnl_usdt": 41.6447,
+    "recent_fill_fees_usdt": 42.5723
   },
   "strategy_ledger": {
-    "rows": 138,
-    "opens": 70,
-    "closes": 68,
-    "unique_pairs": 34,
-    "wins": 20,
+    "rows": 148,
+    "opens": 75,
+    "closes": 73,
+    "unique_pairs": 35,
+    "wins": 22,
     "losses": 34,
-    "flats": 14,
-    "win_rate_pct": 29.4118,
-    "realized_pnl_usdt": 8.2575,
-    "average_close_pnl_usdt": 0.1214,
-    "profit_factor": 1.0697,
+    "flats": 17,
+    "win_rate_pct": 30.137,
+    "realized_pnl_usdt": 27.0549,
+    "average_close_pnl_usdt": 0.3706,
+    "profit_factor": 1.2283,
     "max_drawdown_pct": 0.7614,
-    "daily_sharpe_annualized_365": 0.4913,
-    "daily_sortino_annualized_365": 0.7819,
-    "one_way_open_notional_usdt": 25875.1764,
-    "two_way_logged_notional_usdt": 50750.3528,
-    "turnover_one_way_x_start_aum": 2.5875,
-    "mean_signed_open_slippage_bps": 95.4304,
-    "median_signed_open_slippage_bps": 54.1124,
-    "slippage_sample_opens": 40
+    "daily_sharpe_annualized_365": 1.5152,
+    "daily_sortino_annualized_365": 2.4303,
+    "one_way_open_notional_usdt": 28375.1764,
+    "two_way_logged_notional_usdt": 55750.3528,
+    "turnover_one_way_x_start_aum": 2.8375,
+    "mean_signed_open_slippage_bps": 92.6,
+    "median_signed_open_slippage_bps": 57.3774,
+    "slippage_sample_opens": 45
   },
   "risk_controls": {
     "risk_usd_per_trade": 10,
@@ -54,8 +54,8 @@
   },
   "agent_evidence": {
     "recent_decisions": 100,
-    "llm_decisions": 97,
-    "llm_fallback_decisions": 3
+    "llm_decisions": 100,
+    "llm_fallback_decisions": 0
   },
   "limitations": [
     "Demo equity and exchange fills are authoritative for money; paper-shadow metrics are strategy diagnostics.",

@@ -90,7 +90,7 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 - [x] API: `GET /health` → `exec_mode` = `hub_demo`, `bitget_demo` = true
 - [x] Dashboard `/` + `/positions` (Demo PnL) + `/decisions` + `/account` (equity overlay)
 - [x] Docker Compose: `api` + `desk` running
-- [x] Evidence log refreshed through 17 Sep: `python scripts/export_paper_log.py --refresh-desk-fixture`
+- [x] Evidence log refreshed through 18 Sep: `python scripts/export_paper_log.py --refresh-desk-fixture`
 - [x] Demo artifacts refreshed: `python scripts/capture_demo_artifacts.py`
 - [x] Validation regenerated: `python scripts/generate_s2_validation.py`
 - [x] Decision hashes: `python scripts/verify_decision_log.py`

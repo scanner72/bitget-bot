@@ -32,25 +32,25 @@ The target user is a crypto or cross-asset trader who wants an inspectable auton
 
 The product value is operational verifiability: users can see why a trade was accepted or rejected, compare local strategy state with authoritative Bitget fills/equity, reproduce the evidence exporter, and verify the SHA-256 decision chain. Live mainnet is deliberately disabled for this submission.
 
-### Part 3 · Validation data and key metrics
+### Part 3 — Validation data and key metrics
 
-**Observed Bitget UTA Demo, 9–17 Sep 2026:**
+**Observed Bitget UTA Demo, 9–18 Sep 2026:**
 
-- 138 public strategy-ledger records: 70 opens and 68 closes across 34 instruments.
-- Current Demo equity at capture: 9,869.62 USDT from a 10,000 USDT anchor; observed return **−1.304%**.
-- Recent captured exchange window: 100 Bitget fills; close `exec_pnl` **−16.13 USDT** and fees **39.42 USDT**.
-- Demo-linked paper-shadow diagnostics: 29.41% win rate, 1.070 profit factor, 0.761% reconstructed max drawdown, 0.491 daily Sharpe and 0.782 daily Sortino (annualized √365).
-- Turnover proxy: 25,875.18 USDT one-way open notional (2.587× start AUM); 50,750.35 USDT two-way logged notional.
-- Signed entry slippage: mean 95.43 bps, median 54.11 bps across 40 measurable opens.
+- 148 public strategy-ledger records: 75 opens and 73 closes across 35 instruments.
+- Current Demo equity at capture: 9,880.54 USDT from a 10,000 USDT anchor; observed return **−1.195%**.
+- Recent captured exchange window: 100 Bitget fills; close `exec_pnl` **+41.64 USDT** and fees **42.57 USDT**.
+- Demo-linked paper-shadow diagnostics: 30.14% win rate, 1.228 profit factor, 0.761% reconstructed max drawdown, 1.515 daily Sharpe and 2.430 daily Sortino (annualized ×365).
+- Turnover proxy: 28,375.18 USDT one-way open notional (2.837× start AUM); 55,750.35 USDT two-way logged notional.
+- Signed entry slippage: mean 92.60 bps, median 57.38 bps across 45 measurable opens.
 - Funding is not available in the captured fills payload and is excluded.
 
-All figures are labeled observed. Demo equity and exchange fills are authoritative for money; paper-shadow statistics are strategy diagnostics and may differ. The sample is short, so Sharpe/Sortino are exploratory, not a stable expected-performance or out-of-sample claim. The negative exchange result is reported without cherry-picking and motivated concrete controls: symbol/quantity fill matching, Demo price-scale rejection, adaptive leverage, and instrument-specific ATR.
+All figures are labeled observed. Demo equity and exchange fills are authoritative for money; paper-shadow statistics are strategy diagnostics and may differ. The sample is short, so Sharpe/Sortino are exploratory, not a stable expected-performance or out-of-sample claim. The still-negative Demo equity path is reported without cherry-picking and motivated concrete controls: symbol/quantity fill matching, Demo price-scale rejection, adaptive leverage, and instrument-specific ATR.
 
-### Part 4 · Progress and proof of effective use
+### Part 4 — Progress and proof of effective use
 
-The repository is public and runnable with Docker Compose. The local desk is continuously connected to Bitget UTA Demo, scans the Demo catalog on 15m/1h/4h, and exposes live `/health`, `/positions`, `/fills`, `/history`, `/decisions`, and `/equity` endpoints. The captured evidence contains 70 observed opens and approximately 50.75k USDT of two-way logged notional. In the latest artifact, 99 of 100 recent decisions used the LLM path with deterministic fallback available.
+The repository is public and runnable with Docker Compose. The local desk is continuously connected to Bitget UTA Demo, scans the Demo catalog on 15m/1h/4h, and exposes live `/health`, `/positions`, `/fills`, `/history`, `/decisions`, and `/equity` endpoints. The captured evidence contains 75 observed opens and approximately 55.75k USDT of two-way logged notional. In the latest artifact, 100 of 100 recent decisions used the LLM path with deterministic fallback available.
 
-Observed activation is the running autonomous desk and its trade/fill history. Observed AUM is 9,869.62 USDT Demo equity at capture. External-user retention is not claimed; the current validation is a single-team autonomous deployment. Incremental fee evidence is 39.42 USDT across the captured recent exchange fills. The next validation target is a longer unchanged-policy window with exchange-native funding and complete fill pagination.
+Observed activation is the running autonomous desk and its trade/fill history. Observed AUM is 9,880.54 USDT Demo equity at capture. External-user retention is not claimed; the current validation is a single-team autonomous deployment. Incremental fee evidence is 42.57 USDT across the captured recent exchange fills. The next validation target is a longer unchanged-policy window with exchange-native funding and complete fill pagination.
 
 ### Part 5 · Our take on AI Trading
 
