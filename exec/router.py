@@ -49,12 +49,32 @@ def _qty_ref_price(symbol: str, fallback: float) -> float:
     return fb
 
 
-def _max_price_dev_pct() -> float:
-    raw = (os.getenv("SIGNAL_PRICE_MAX_DEV_PCT") or "5").strip()
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
     try:
-        return max(0.0, float(raw))
+        return float(raw)
     except ValueError:
-        return 5.0
+        return default
+
+
+def _max_price_dev_pct(symbol: str | None = None) -> float:
+    """Public-vs-Demo price sanity cap. rToken/stock can override via env.
+
+    Demo books drift a few % from public (BZ stocks ~4.5%, LTC crypto ~3%).
+    Default 2.5% for all — the old crypto 5% let LTC@59.78 vs public ~58 through.
+    """
+    base = max(0.0, _env_float("SIGNAL_PRICE_MAX_DEV_PCT", 2.5))
+    if symbol:
+        try:
+            from ingest.universe import is_rtoken_symbol
+
+            if is_rtoken_symbol(symbol):
+                return max(0.0, _env_float("RTOKEN_SIGNAL_PRICE_MAX_DEV_PCT", base))
+        except Exception:  # noqa: BLE001
+            return base
+    return base
 
 
 def _price_dev_pct(a: float, b: float) -> float | None:
@@ -68,9 +88,15 @@ def _price_dev_pct(a: float, b: float) -> float | None:
     return abs(aa / bb - 1.0) * 100.0
 
 
-def _price_scale_reason(ref: float, other: float | None, *, label: str) -> str | None:
-    """None when other is missing or within SIGNAL_PRICE_MAX_DEV_PCT of ref."""
-    max_dev = _max_price_dev_pct()
+def _price_scale_reason(
+    ref: float,
+    other: float | None,
+    *,
+    label: str,
+    symbol: str | None = None,
+) -> str | None:
+    """None when other is missing or within the symbol's max price deviation."""
+    max_dev = _max_price_dev_pct(symbol)
     if max_dev <= 0 or other is None:
         return None
     dev = _price_dev_pct(other, ref)
@@ -469,6 +495,11 @@ def open_position(
     book: PaperBook | None = None,
 ) -> str:
     """Open via configured backend. Returns local paper position_id (shadow for hub)."""
+    from ingest.symbols import is_trade_denied, to_bitget_id
+
+    if is_trade_denied(symbol):
+        raise ValueError(f"symbol_denied:{to_bitget_id(symbol)}")
+
     mode = exec_mode()
     meta = dict(meta or {})
     meta["exec_mode"] = mode
@@ -514,7 +545,7 @@ def open_position(
             if demo_mark is not None:
                 meta["hub_mark_pre_open"] = demo_mark
                 mismatch = _price_scale_reason(
-                    qty_px, demo_mark, label="demo_mark"
+                    qty_px, demo_mark, label="demo_mark", symbol=symbol
                 )
                 if mismatch:
                     meta["hub_price_mismatch"] = mismatch
@@ -582,9 +613,19 @@ def open_position(
         if mark is None or mark <= 0:
             mark = fill_entry
         meta["hub_mark_at_open"] = mark
-        mismatch = _price_scale_reason(qty_px, fill_entry, label="hub_entry")
+        mismatch = _price_scale_reason(
+            qty_px, fill_entry, label="hub_entry", symbol=symbol
+        )
         if mismatch is None:
-            mismatch = _price_scale_reason(qty_px, mark, label="hub_mark")
+            mismatch = _price_scale_reason(
+                qty_px, mark, label="hub_mark", symbol=symbol
+            )
+        # Also vs signal bar — public mark can sit between signal and Demo
+        # (LTC sig 57.01 / pub 58.02 / Demo 59.78) and still be the wrong scale.
+        if mismatch is None and signal_price > 0:
+            mismatch = _price_scale_reason(
+                signal_price, fill_entry, label="hub_entry_vs_signal", symbol=symbol
+            )
         if mismatch:
             meta["hub_price_mismatch"] = mismatch
             flatten_qty = str(meta.get("hub_qty") or qty)
@@ -709,6 +750,38 @@ def close_position(
                 f"[HUB] CLOSE {mode} {side} {pos.get('symbol')} qty={qty} "
                 f"orderId={closed.get('orderId')}"
             )
+            # Prefer real Demo fill avg + execPnl over local mark/signal close_price.
+            try:
+                from exec.reconcile import resolve_hub_close_fill
+
+                fill_px, fill_pnl, fill_meta = resolve_hub_close_fill(
+                    pos,
+                    order_id=str(closed.get("orderId") or "") or None,
+                    client=client,
+                )
+                hub_meta.update(fill_meta)
+                if fill_px is not None and fill_px > 0:
+                    price = float(fill_px)
+                    hub_meta["close_price_source"] = "hub_fill"
+                    hub_meta["hub_close_fill_price"] = float(fill_px)
+                    print(
+                        f"[HUB] CLOSE FILL {pos.get('symbol')} "
+                        f"px={fill_px} exec_pnl={fill_pnl}"
+                    )
+                else:
+                    hub_meta.setdefault("close_price_source", "local_mark_pending_fill")
+                    print(
+                        f"[HUB] CLOSE FILL pending {pos.get('symbol')}; "
+                        f"using trigger px={price}"
+                    )
+                if fill_pnl is not None:
+                    hub_meta["hub_exec_pnl"] = float(fill_pnl)
+            except Exception as fill_exc:  # noqa: BLE001
+                hub_meta["hub_close_fill_error"] = (
+                    f"{type(fill_exc).__name__}: {fill_exc}"
+                )
+                hub_meta.setdefault("close_price_source", "local_mark_fill_error")
+                print(f"[HUB] CLOSE FILL lookup warn: {fill_exc}")
         except Exception as exc:  # noqa: BLE001
             hub_meta = {"hub_close_error": f"{type(exc).__name__}: {exc}"}
             print(f"[HUB] CLOSE ERROR {exc}")
@@ -718,10 +791,19 @@ def close_position(
     close_meta.setdefault("exec_mode", mode)
     if pos is not None and is_paper_venue(pos):
         close_meta.setdefault("exec_venue", "paper")
+    realized = None
+    if hub_meta.get("hub_exec_pnl") is not None and hub_meta.get(
+        "close_price_source"
+    ) == "hub_fill":
+        try:
+            realized = float(hub_meta["hub_exec_pnl"])
+        except (TypeError, ValueError):
+            realized = None
     return close_paper(
         position_id_or_symbol,
         price,
         meta=close_meta,
         gate=gate,
         book=b,
+        realized_pnl=realized,
     )

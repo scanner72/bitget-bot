@@ -175,7 +175,12 @@ def _select_close_rows(
     return rows, None
 
 
-def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, Any]]:
+def _close_from_exchange(
+    pos: dict[str, Any],
+    *,
+    order_id: str | None = None,
+    client: Any | None = None,
+) -> tuple[float | None, dict[str, Any]]:
     """Price/PnL from Bitget close fills; empty extras if unavailable."""
     extras: dict[str, Any] = {}
     opened = _parse_ts(pos.get("opened_ts"))
@@ -183,15 +188,28 @@ def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, A
     try:
         from exec.bitget_hub import BitgetUtaClient, ccxt_to_bitget_symbol
 
-        client = BitgetUtaClient.from_env()
+        hub = client or BitgetUtaClient.from_env()
         bg = ccxt_to_bitget_symbol(str(pos.get("symbol") or "")).upper()
-        raw = client.fills(
+        raw = hub.fills(
             category="USDT-FUTURES",
             symbol=bg,
-            start_time=opened_ms or None,
+            order_id=str(order_id) if order_id else None,
+            start_time=None if order_id else (opened_ms or None),
             limit=100,
         )
         items = _fills_list(raw)
+        # Some UTA responses ignore orderId; filter client-side when provided.
+        if order_id:
+            oid = str(order_id)
+            matched = [
+                it
+                for it in items
+                if str(it.get("orderId") or it.get("order_id") or "") == oid
+            ]
+            if matched:
+                items = matched
+            else:
+                extras["hub_close_order_id_miss"] = oid
     except Exception as exc:  # noqa: BLE001
         extras["hub_fill_lookup_error"] = f"{type(exc).__name__}: {exc}"
         return None, extras
@@ -273,13 +291,52 @@ def _close_from_exchange(pos: dict[str, Any]) -> tuple[float | None, dict[str, A
         entry = float(pos.get("entry_price") or 0)
     except (TypeError, ValueError):
         entry = 0.0
-    if px is not None and entry > 0 and abs(float(px) - entry) / entry > 0.25:
+    if (
+        not order_id
+        and px is not None
+        and entry > 0
+        and abs(float(px) - entry) / entry > 0.25
+    ):
         extras["hub_close_price_rejected"] = px
         extras["close_price_source"] = "rejected_vs_entry"
         return None, extras
     extras["close_price_source"] = "hub_fill"
     return px, extras
 
+
+
+
+def resolve_hub_close_fill(
+    pos: dict[str, Any],
+    *,
+    order_id: str | None = None,
+    client: Any | None = None,
+    retries: int = 8,
+    delay_sec: float = 0.35,
+) -> tuple[float | None, float | None, dict[str, Any]]:
+    """Poll Bitget close fills after an active hub close.
+
+    Returns (avg_exec_price, exec_pnl_sum, extras). Prefer order_id-scoped fills.
+    """
+    import time
+
+    extras: dict[str, Any] = {}
+    px: float | None = None
+    pnl: float | None = None
+    for attempt in range(max(1, retries)):
+        px, extras = _close_from_exchange(pos, order_id=order_id, client=client)
+        if extras.get("hub_exec_pnl") is not None:
+            try:
+                pnl = float(extras["hub_exec_pnl"])
+            except (TypeError, ValueError):
+                pnl = None
+        if px is not None and px > 0:
+            extras["hub_close_fill_attempts"] = attempt + 1
+            return float(px), pnl, extras
+        time.sleep(delay_sec)
+    extras["hub_close_fill_attempts"] = retries
+    extras.setdefault("close_price_source", "pending_reconcile")
+    return None, pnl, extras
 
 def _close_price(pos: dict[str, Any]) -> float:
     """Exchange close fill first; then mark; then entry."""
