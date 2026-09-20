@@ -1,4 +1,4 @@
-﻿# Bitget S2 — Submission checklist
+# Bitget S2 — Submission checklist
 
 **Deadline:** 21 Sep 2026, 23:59 UTC+8 (official S2 form; 18:59 UTC+3).
 **Track:** Agentic Trading / Divergent Agent Desk
@@ -47,38 +47,33 @@ For final monetary claims, capture `/equity` (Demo wallet) and `/fills` (`exec_p
 
 ## Demo video (2–5 min)
 
-- [ ] Record using [`docs/DEMO.md`](DEMO.md)
-- [ ] Show: pitch → `smoke_bitget` + `smoke_hub_demo` → `run_signal_loop --once` → `:8080` (`/health`, `/positions`, `/decisions`)
-- [ ] Say clearly: **Bitget Demo UTA**, not live mainnet; Agent Trading track; Docker optional
-- [ ] Upload URL: `https://_________________`
+- [x] Recorded 90s judge cut ([`docs/DEMO_90s.md`](DEMO_90s.md)); full script still in [`docs/DEMO.md`](DEMO.md)
+- [x] In frame: hub_demo / not live, decisions hash, equity, repo URL
+- [x] Say clearly: **Bitget Demo UTA**, not live mainnet; Agent Trading track
+- [x] Upload URL (X video on post): `https://x.com/scanner721/status/2101717163681738949`
+
+Local file (optional): `C:\\Users\\User\\Downloads\\bitget-demo-90s\\demo-90s.mp4` (~90s, 1920×1080).
 
 Artifacts: `docs/demo_artifacts/` (`health.json`, `positions.json`, …).
 
 ---
 
-## X / Twitter post (template)
+## X / Twitter post
+
+- [x] Post: `https://x.com/scanner721/status/2101717163681738949`
+- [x] Published 2026-09-20 ~19:56 Chișinău (UTC+3); video ~90s attached
+- [ ] Optional reply with repo + log links if the main post was length-truncated (see note below)
+
+**Note:** API text ends at «Live …» + video — repo URL, evidence log link and hashtags may have been cut by the character limit. Recommended reply under the post:
 
 ```
-Built a Divergent Agent Desk for @Bitget #Bitget #AgentTrading #BitgetHackathon
-
-Public OHLCV → RSI / level-cross → rules or LLM decide → risk gate → Bitget Demo UTA (hub_demo) + dashboard :8080
-
 Repo: https://github.com/scanner72/bitget-bot
-Demo: https://_________________
-
-#Web3 #TradingBot #Hackathon
+Log: https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/paper_trading_log.csv
+Validation: https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/s2_validation.md
+#BitgetHackathon #AgenticTrading #Bitget
 ```
 
-RU variant:
-
-```
-Agent desk для Bitget S2: публичный OHLCV → сигналы → rules/LLM + risk → Bitget Demo UTA (не live mainnet) → дашборд :8080.
-
-Репо: https://github.com/scanner72/bitget-bot
-Видео: https://_________________
-```
-
-- [ ] Post: `https://x.com/_________________/status/_________________`
+Draft history: [`docs/X_POST_DRAFT.md`](X_POST_DRAFT.md).
 
 ---
 
@@ -104,8 +99,8 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | Project name | Divergent Agent Desk / Bitget S2 |
 | Track | Agentic Trading |
 | GitHub | `https://github.com/scanner72/bitget-bot` |
-| Demo video | TBD |
-| X post | TBD |
+| Demo video | `https://x.com/scanner721/status/2101717163681738949` |
+| X post | `https://x.com/scanner721/status/2101717163681738949` |
 | Paper / Demo trading log | `https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/paper_trading_log.csv` |
 | Validation | `https://github.com/scanner72/bitget-bot/blob/main/docs/evidence/s2_validation.md` |
 | Form copy | [`docs/S2_FORM_COPY.md`](S2_FORM_COPY.md) |
@@ -122,4 +117,4 @@ Agent desk для Bitget S2: публичный OHLCV → сигналы → rul
 | Refresh `docs/demo_artifacts/` before screenshots | Claim live mainnet trading |
 | Link README + DEMO + handoff + [research-graveyard](research-graveyard.md) | Kill healthy overnight `--poll` without reason |
 
-**Status:** docs aligned with `hub_demo` stack. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv). Decision fixture verifies offline. Video not produced in-repo.
+**Status:** X post + 90s video live. Form still needs human submit before deadline. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv).
