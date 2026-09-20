@@ -77,6 +77,12 @@ Draft history: [`docs/X_POST_DRAFT.md`](X_POST_DRAFT.md).
 
 ---
 
+## Official form
+
+- [x] Submitted via [forms.gle/GyWZCMCPocgJdJon6](https://forms.gle/GyWZCMCPocgJdJon6) (Alexander, 2026-09-20 Chișinău).
+
+---
+
 ## Technical smoke (before submit)
 
 - [ ] `.env`: `EXEC_MODE=hub_demo`, `BITGET_DEMO=1`, `BITGET_ALLOW_LIVE=0`, `HUB_SYNC_EXCHANGE_SL=1`, `HUB_LEVERAGE=20`
@@ -117,4 +123,4 @@ Draft history: [`docs/X_POST_DRAFT.md`](X_POST_DRAFT.md).
 | Refresh `docs/demo_artifacts/` before screenshots | Claim live mainnet trading |
 | Link README + DEMO + handoff + [research-graveyard](research-graveyard.md) | Kill healthy overnight `--poll` without reason |
 
-**Status:** X post + 90s video live. Form still needs human submit before deadline. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv).
+**Status:** Form submitted. X post + 90s video live. Public paper/Demo log: [`docs/evidence/paper_trading_log.csv`](evidence/paper_trading_log.csv).
