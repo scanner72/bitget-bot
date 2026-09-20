@@ -29,6 +29,7 @@ smokes=(
   scripts/smoke_paper_fallback.py
   scripts/smoke_hub_leverage.py
   scripts/smoke_hub_price_scale.py
+  scripts/smoke_price_sanity.py
   scripts/smoke_reconcile.py
   scripts/smoke_chart.py
   scripts/smoke_export_paper_log.py

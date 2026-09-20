@@ -18,6 +18,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from risk.atr import ATR_PERIOD, compute_atr, levels_dict_for_position
+from risk.price_sanity import mark_sanity_dev_pct, pos_entry_price, quote_is_sane
 
 ROOT = Path(__file__).resolve().parents[1]
 logger = logging.getLogger(__name__)
@@ -674,6 +675,19 @@ def check_open_exits(
                 except Exception:
                     mark = None
 
+        entry = pos_entry_price(pos)
+        if entry is not None:
+            # Same BZ case: public mark/candle ~99 vs Demo fill ~103.5. Hub TPSL
+            # stays on the exchange; do not close the shadow from a wrong scale.
+            bad_mark = mark is not None and not quote_is_sane(sym, mark, entry)
+            bad_hi = candle_high is not None and not quote_is_sane(sym, candle_high, entry)
+            bad_lo = candle_low is not None and not quote_is_sane(sym, candle_low, entry)
+            if bad_mark or bad_hi or bad_lo:
+                print(
+                    f"[EXIT] skip mark {sym}: mark={mark} hi={candle_high} lo={candle_low} "
+                    f"vs entry={entry} (> {mark_sanity_dev_pct(sym)}%)"
+                )
+                continue
         ev = evaluate_exit(
             pos,
             candle_high=candle_high,

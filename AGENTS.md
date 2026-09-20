@@ -10,8 +10,9 @@ Hackathon desk: public Bitget OHLCV → signals → decide → risk → **UTA De
 - Size every entry through `risk/sizing.py`; gate through `risk/gate.py`.
 - Scan `TIMEFRAMES=15m,1h,4h`. Hub lev cap `HUB_LEVERAGE=20` (adaptive `35/SL%`). `PAPER_LEVERAGE=1` — `size_usd` is notional.
 - Prefer `.env.example` numbers: `RISK_USD_PER_TRADE=10`, `MAX_NOTIONAL_USD=500`, `MAX_POSITIONS=15`, `MAX_SAME_DIRECTION_POSITIONS=4`, `MAX_DAILY_LOSS_USD=150`, `RSI_LONG_MAX=0`.
-- Leave `TF_BLOCKER_ENABLED=0`. Pair blocker on.
+- Never trade `USDCUSDT`. Pair blocker on. Leave `TF_BLOCKER_ENABLED=0`.
 - Treat paper-live as opt-in (`PAPER_FALLBACK=1`). Default `hub_demo` scans the full Demo catalog.
+- Price sanity: open/exit `2.5%` vs Demo entry. Catches BZ stocks and LTC Demo premium (~3%). `/equity` + `/fills` `exec_pnl` is the money SoT.
 
 ## Do not
 

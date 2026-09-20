@@ -20,6 +20,7 @@ Copy numbers from local `.env` / `.env.example`. Do not “realign to v1” unle
 ## Scan / signals
 
 - `TIMEFRAMES=15m,1h,4h` (also set on `TIMEFRAME` as a comma list). Loop + public WS scan **all three**. Do not collapse back to 15m-only
+- Hard trade ban: `USDCUSDT` (`USDC/USDT:USDT`). Stablecoin basis pair — drop from scan and deny at the risk gate. Extra bans via `TRADE_DENY_SYMBOLS`. Do not re-enable unless the user asks
 - `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` — **no** `LEVEL_CROSS_UP`
 - `LEVEL_CROSS_DOWN` → long; `LEVEL_CROSS_UP` → short (detector still exists, just not allowed)
 - `ALLOW_LONG=1`, `ALLOW_SHORT=1`
@@ -47,3 +48,10 @@ Copy numbers from local `.env` / `.env.example`. Do not “realign to v1” unle
 - `HUB_LEVERAGE=20` is the **cap**. Opens use adaptive lev: `max(2, min(20, int(35 / SL%)))` so SL ≈ 35% of margin
 - `PAPER_LEVERAGE=1` — `size_usd` is notional
 - v3 `/trade/fills` must be filtered by symbol (+ qty); dummy BTC@65000 never hits live `data/paper_fills.jsonl`
+
+## Price sanity (Demo vs public)
+
+- Thin Demo books drift from the public feed. **BZ** (2026-09-18): Demo `103.52` vs public `~99` (4.5%). **LTC** (2026-09-19): Demo `59.78` vs public `~58` (3.0%) — paper SL `@57.99` booked `−14.97` while hub `exec_pnl ≈ −0.26`. Live Demo mark still ~3% above public.
+- Open guard: `SIGNAL_PRICE_MAX_DEV_PCT=2.5` (all), `RTOKEN_SIGNAL_PRICE_MAX_DEV_PCT=2.5`. Also reject fill vs **signal** price. Old crypto `5%` let LTC through. (`DemoPriceMismatchError` → flatten.)
+- Exit guard: `MARK_SANITY_MAX_DEV_PCT=2.5` / `RTOKEN_MARK_SANITY_MAX_DEV_PCT=2.5`. Drop a public mark that disagrees with **position entry** (Demo fill) or candle. Hub TPSL on the exchange stays the real exit.
+- Exchange `/equity` + `/fills` (`exec_pnl`) stay the monetary source of truth; paper-shadow PnL is a diagnostic and can diverge on these gaps.

@@ -22,4 +22,4 @@ Local: `.venv` then `python scripts/run_api.py` and `python scripts/run_signal_l
 
 ## Safety
 
-`EXEC_MODE=hub_demo`, `BITGET_ALLOW_LIVE=0`. Never bypass the risk gate. Do not commit `.env`. Do not touch `C:\divergent`. `TF_BLOCKER_ENABLED=0`. No Context Sync tools here.
+`EXEC_MODE=hub_demo`, `BITGET_ALLOW_LIVE=0`. Never bypass the risk gate. Do not commit `.env`. Do not touch `C:\divergent`. `TF_BLOCKER_ENABLED=0`. Price sanity: open/exit 2.5% vs Demo entry (`risk/price_sanity.py`) — LTC/BZ drift. No Context Sync tools here.

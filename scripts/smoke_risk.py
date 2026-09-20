@@ -6,6 +6,7 @@ Exit 0 on success. Paper-only; no exchange.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -23,6 +24,10 @@ def _assert(cond: bool, msg: str) -> None:
 
 
 def main() -> int:
+    os.environ["PAIR_BLOCKER_ENABLED"] = "0"
+    os.environ["TF_BLOCKER_ENABLED"] = "0"
+    os.environ.pop("PAIR_BLOCKS_PATH", None)
+
     with tempfile.TemporaryDirectory(prefix="bitget_risk_smoke_") as tmp:
         tmp_path = Path(tmp)
         state_path = tmp_path / "risk_state.json"
@@ -89,7 +94,28 @@ def main() -> int:
         print(f"check6(reload) allow={r6['allowed']} reason={r6['reason']}")
         _assert(r6["allowed"] is False and r6["reason"] == "daily_loss_kill", f"reload kill: {r6}")
 
-    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill)")
+        # 7) Hard ban: USDCUSDT never opens
+        gate_ok = RiskGate(
+            limits=RiskLimits(
+                max_notional_usd=100.0,
+                max_daily_loss_usd=150.0,
+                max_positions=15,
+                cooldown_sec=0.0,
+                allowed_types=None,
+            ),
+            state=RiskState(),
+            persist=False,
+        )
+        r7 = gate_ok.check({"symbol": "USDC/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
+        print(f"check7 USDC deny allow={r7['allowed']} reason={r7['reason']}")
+        _assert(
+            r7["allowed"] is False and str(r7["reason"]).startswith("symbol_denied:USDCUSDT"),
+            f"expected symbol_denied USDCUSDT: {r7}",
+        )
+        r8 = gate_ok.check({"symbol": "BTC/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
+        _assert(r8["allowed"] is True, f"BTC must still allow: {r8}")
+
+    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill, USDCUSDT)")
     return 0
 
 

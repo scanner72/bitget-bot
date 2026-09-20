@@ -45,6 +45,15 @@ def main() -> int:
     empty = enrich_symbol_fields({"side": "long"})
     _assert("symbol_id" not in empty and "symbol_display" not in empty, "no fake fields")
 
+    from ingest.symbols import drop_denied_symbols, is_trade_denied
+
+    _assert(is_trade_denied("USDCUSDT") is True, "compact USDCUSDT denied")
+    _assert(is_trade_denied("USDC/USDT:USDT") is True, "ccxt USDC/USDT:USDT denied")
+    _assert(is_trade_denied("usdc/usdt") is True, "slash USDC/USDT denied")
+    _assert(is_trade_denied("BTC/USDT:USDT") is False, "BTC still tradable")
+    dropped = drop_denied_symbols(["BTC/USDT:USDT", "USDC/USDT:USDT", "ETH/USDT:USDT"])
+    _assert(dropped == ["BTC/USDT:USDT", "ETH/USDT:USDT"], dropped)
+
     print("smoke_symbols: ok")
     return 0
 

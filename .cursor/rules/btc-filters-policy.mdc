@@ -32,3 +32,4 @@ alwaysApply: true
 2. Do not copy v1 `max_open_positions=60` or `rsi_long_max=30`
 3. Do not restore `BTC_REGIME_TF=1h` unless the user asks
 4. Do not restore `RSI_LONG_MAX=30` — signal-bar RSI on bullish div is almost always >30; the user turned the zone off
+5. Price sanity lives in `desk-config.mdc` (rToken open 2.5%, exit vs entry 3%) — do not widen back to crypto 5% on stocks

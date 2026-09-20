@@ -175,6 +175,10 @@ def main() -> int:
         os.environ["ALLOW_SHORT"] = "1"
         os.environ["RSI_LONG_MAX"] = "30"
         os.environ["BTC_FILTERS_ENABLED"] = "0"
+        # Isolate from ambient data/pair_blocks.json so a live pair block on BTC
+        # does not pre-empt the price-mismatch path under test.
+        os.environ["PAIR_BLOCKER_ENABLED"] = "0"
+        os.environ["PAIR_BLOCKS_PATH"] = str(tdir / "pair_blocks.json")
         os.environ["PROPOSED_SIZE_USD"] = "50"
         os.environ["RISK_USD_PER_TRADE"] = "2"
         os.environ["MAX_NOTIONAL_USD"] = "100"

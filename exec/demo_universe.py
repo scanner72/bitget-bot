@@ -162,6 +162,12 @@ def demo_scan_symbols(*, public_markets: dict | None = None) -> list[str]:
                 f"[DEMO-UNIVERSE] skip {len(skipped)} no public candles: "
                 + ",".join(skipped)
             )
+    from ingest.symbols import drop_denied_symbols, is_trade_denied
+
+    denied = [s for s in out if is_trade_denied(s)]
+    out = drop_denied_symbols(out)
+    if denied:
+        print("[DEMO-UNIVERSE] deny " + ",".join(denied))
     out.sort(key=lambda s: (s != "BTC/USDT:USDT", s))
     print(f"[DEMO-UNIVERSE] scan all Demo instruments n={len(out)}")
     return out
@@ -202,8 +208,12 @@ def filter_to_demo_symbols(symbols: list[str]) -> list[str]:
     if not catalog:
         print("[DEMO-UNIVERSE] empty catalog; scan none until Demo instruments load")
         return []
+    from ingest.symbols import is_trade_denied
+
     out: list[str] = []
     for raw in symbols:
+        if is_trade_denied(str(raw or "")):
+            continue
         bg = ccxt_to_bitget_symbol(str(raw or "")).upper()
         if bg and bg in catalog:
             out.append(raw)

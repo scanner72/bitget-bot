@@ -11,6 +11,11 @@ import threading
 from typing import Any, Iterable
 
 from risk.exits import ExitConfig, apply_exit_event, evaluate_exit
+from risk.price_sanity import mark_sanity_dev_pct, pos_entry_price, quote_is_sane
+
+# Smoke-compatible aliases.
+_mark_sanity_dev_pct = mark_sanity_dev_pct
+_quote_is_sane = quote_is_sane
 
 
 def tick_stops_enabled() -> bool:
@@ -122,6 +127,19 @@ def apply_tick_quotes(
                 df = candle_cache.get_cached_ohlcv(symbol, tf, min_bars=1)
             except Exception:
                 df = None
+        ref_close = None
+        if df is not None and len(df):
+            try:
+                ref_close = float(df["close"].iloc[-1])
+            except Exception:
+                ref_close = None
+        # Drop a stale/mis-scaled WS quote so it cannot invent an SL/TP close.
+        if not quote_is_sane(symbol, last, ref_close):
+            print(
+                f"[TICK] reject quote {symbol}: last={last} vs candle_close={ref_close} "
+                f"(> {mark_sanity_dev_pct(symbol)}%)"
+            )
+            continue
         ch, cl = high, low
         if df is not None and len(df):
             try:
@@ -130,12 +148,27 @@ def apply_tick_quotes(
             except Exception:
                 ch, cl = high, low
         for pos in by_sym.get(symbol) or []:
+            # Public tick and public candle can agree (~99) while Demo entry is
+            # ~103.5. Compare to entry so that cannot fabricate an SL close.
+            entry = pos_entry_price(pos)
+            if entry is not None and not quote_is_sane(symbol, last, entry):
+                print(
+                    f"[TICK] reject quote {symbol}: last={last} vs entry={entry} "
+                    f"(> {mark_sanity_dev_pct(symbol)}%)"
+                )
+                continue
+            use_ch, use_cl, use_df = ch, cl, df
+            if entry is not None:
+                if not quote_is_sane(symbol, use_ch, entry) or not quote_is_sane(
+                    symbol, use_cl, entry
+                ):
+                    use_ch, use_cl, use_df = last, last, None
             ev = evaluate_exit(
                 pos,
-                candle_high=ch,
-                candle_low=cl,
+                candle_high=use_ch,
+                candle_low=use_cl,
                 mark_price=last,
-                df=df,
+                df=use_df,
                 cfg=cfg,
             )
             if ev.action == "none":

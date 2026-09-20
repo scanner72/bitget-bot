@@ -6,6 +6,12 @@ expose Bitget-native id and a short display label without changing exec paths.
 
 from __future__ import annotations
 
+import os
+
+# Always-on trade bans (Bitget ids). USDCUSDT is a stablecoin basis pair —
+# ATR/div signals there are noise; do not scan or open it.
+DEFAULT_TRADE_DENY_IDS = frozenset({"USDCUSDT"})
+
 
 def to_bitget_id(ccxt_symbol: str) -> str:
     """ccxt -> Bitget native id: CRCL/USDT:USDT -> CRCLUSDT (strip /, :settle)."""
@@ -46,3 +52,28 @@ def enrich_symbol_fields(row: dict) -> dict:
     out["symbol_id"] = to_bitget_id(text)
     out["symbol_display"] = to_display(text)
     return out
+
+
+def trade_deny_ids() -> set[str]:
+    """Hardcoded bans plus optional TRADE_DENY_SYMBOLS (comma list, any form)."""
+    ids = set(DEFAULT_TRADE_DENY_IDS)
+    raw = (os.getenv("TRADE_DENY_SYMBOLS") or "").strip()
+    if not raw:
+        return ids
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        bid = to_bitget_id(token)
+        if bid:
+            ids.add(bid)
+    return ids
+
+
+def is_trade_denied(symbol: str) -> bool:
+    bid = to_bitget_id(symbol)
+    return bool(bid) and bid in trade_deny_ids()
+
+
+def drop_denied_symbols(symbols: list[str]) -> list[str]:
+    return [s for s in symbols if not is_trade_denied(s)]

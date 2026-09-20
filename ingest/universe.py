@@ -108,6 +108,7 @@ KNOWN_EQUITY_BASES: frozenset[str] = frozenset(
         "SKHY",
         "SKHYNIX",
         "SPCX",
+        "BZ",
         "SONY",
         "OPENAI",
         "ANTHROPIC",
@@ -297,6 +298,13 @@ def partition_swap_markets(
         if not _is_usdt_linear_swap(market):
             continue
         sym = market["symbol"]
+        try:
+            from ingest.symbols import is_trade_denied
+
+            if is_trade_denied(sym):
+                continue
+        except Exception:
+            pass
         qv = _quote_volume(tickers.get(sym))
         row = {
             "symbol": sym,
@@ -379,13 +387,15 @@ def resolve_scan_symbols(
     SCAN_MODE=fixed -> use `fixed_symbols` (from SYMBOLS env).
     SCAN_MODE=auto  -> union of top crypto + top rToken (refreshed per cache).
     """
+    from ingest.symbols import drop_denied_symbols
+
     env = load_scan_env()
     mode = env["mode"]
     if mode == "fixed":
-        return list(fixed_symbols), mode, None
+        return drop_denied_symbols(list(fixed_symbols)), mode, None
     cache = cache or UniverseCache()
     snap = cache.get(force=force_refresh)
-    return snap.symbols, mode, snap
+    return drop_denied_symbols(snap.symbols), mode, snap
 
 
 __all__ = [

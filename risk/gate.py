@@ -263,6 +263,18 @@ class RiskGate:
         if not symbol:
             return {"allowed": False, "reason": "missing_symbol", "limits": limits_snap}
 
+        try:
+            from ingest.symbols import is_trade_denied, to_bitget_id
+
+            if is_trade_denied(symbol):
+                return {
+                    "allowed": False,
+                    "reason": f"symbol_denied:{to_bitget_id(symbol)}",
+                    "limits": limits_snap,
+                }
+        except Exception:  # noqa: BLE001
+            pass
+
         allowed_types = self.limits.allowed_types
         if allowed_types is not None and ctype and ctype not in allowed_types:
             return {

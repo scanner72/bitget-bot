@@ -129,7 +129,14 @@ def _get_btc_ema50_state() -> str:
 
 
 def check_btc_filters(direction: str, symbol: str = "") -> tuple[bool, str]:
-    """Return (allowed, reason). True = trade OK. Divergent defaults."""
+    """Return (allowed, reason). True = trade OK.
+
+    Regime policy (auto side switch):
+    - short only when BTC regime is bearish (not neutral/bullish)
+    - long blocked when BTC regime is bearish
+    Optional env BTC_SHORT_ONLY_BEARISH=0 restores old symmetric veto
+    (block short only in bullish, allow short in neutral).
+    """
     from pathlib import Path
 
     load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
@@ -144,16 +151,23 @@ def check_btc_filters(direction: str, symbol: str = "") -> tuple[bool, str]:
     if side not in {"long", "short"}:
         return True, "ok"
 
-    # Regime — v1: block LONG in bearish / SHORT in bullish (symmetric)
     if _env_bool("BTC_REGIME_ENABLED", True):
         try:
             regime = _get_btc_regime()
-            if regime == "bearish" and side == "long":
+            strict_short = _env_bool("BTC_SHORT_ONLY_BEARISH", True)
+            if side == "long" and regime == "bearish":
                 return False, "btc_regime:bearish_block_long"
-            if regime == "bullish" and side == "short":
-                return False, "btc_regime:bullish_block_short"
+            if side == "short":
+                if strict_short:
+                    # Option 2: shorts only in confirmed bearish BTC
+                    if regime != "bearish":
+                        return False, f"btc_regime:{regime}_block_short_strict"
+                elif regime == "bullish":
+                    return False, "btc_regime:bullish_block_short"
         except Exception:
-            pass
+            # Fail-closed for shorts if regime cannot be read
+            if side == "short" and _env_bool("BTC_SHORT_ONLY_BEARISH", True):
+                return False, "btc_regime:unknown_block_short_strict"
 
     # Momentum
     mom_thr = _env_float("BTC_MOMENTUM_PCT", 1.2)
