@@ -450,6 +450,61 @@ def sync_exchange_sl(
     side = str(pos.get("side") or meta.get("side") or "long")
     tp2 = pos.get("tp2") if pos.get("tp2") is not None else meta.get("tp2")
     tp2 = meta.get("hub_tp2_price") or tp2
+    # Clamp SL/TP vs live mark so Bitget 25590 is not hit on BE/trail.
+    mark = None
+    for src in (
+        pos.get("mark_price"),
+        meta.get("mark_price"),
+        meta.get("hub_mark_at_open"),
+    ):
+        try:
+            if src is not None and float(src) > 0:
+                mark = float(src)
+                break
+        except (TypeError, ValueError):
+            pass
+    if mark is None:
+        try:
+            from ingest.bitget_ohlcv import get_mark_price
+
+            mark = float(get_mark_price(str(pos.get("symbol"))))
+        except Exception as _mexc:  # noqa: BLE001
+            print(f"[HUB] SL mark lookup warn: {_mexc}")
+    requested_sl = new_f
+    if mark is not None and mark > 0:
+        tp_f = None
+        try:
+            if tp2 is not None and str(tp2).strip() != "":
+                tp_f = float(tp2)
+        except (TypeError, ValueError):
+            tp_f = None
+        clamped_sl, clamped_tp = _validate_tpsl_vs_mark(
+            side, sl=new_f, tp=tp_f, mark=mark, buffer_pct=0.05
+        )
+        if clamped_sl is not None:
+            if abs(clamped_sl - requested_sl) / max(abs(requested_sl), 1e-12) > 1e-6:
+                print(
+                    f"[HUB] SL CLAMP {pos.get('symbol')} {requested_sl} -> "
+                    f"{clamped_sl} (mark={mark} side={side} reason={reason})"
+                )
+            new_f = float(clamped_sl)
+        if clamped_tp is not None:
+            tp2 = clamped_tp
+        side_l = str(side).lower()
+        is_long = side_l in {"long", "buy"}
+        invalid = (is_long and new_f >= mark) or ((not is_long) and new_f <= mark)
+        if invalid:
+            print(
+                f"[HUB] SL SKIP {pos.get('symbol')} sl={new_f} mark={mark} "
+                f"(would violate Bitget side rule; reason={reason})"
+            )
+            return {
+                "hub_sl_sync_error": "skipped_invalid_vs_mark",
+                "hub_sl_sync_attempt_price": requested_sl,
+                "hub_sl_sync_attempt_ts": datetime.now(timezone.utc).isoformat(),
+                "hub_sl_sync_reason": reason,
+                "hub_sl_skipped_mark": mark,
+            }
     try:
         out = client.set_position_stop_loss(
             str(pos.get("symbol")),
@@ -783,8 +838,49 @@ def close_position(
                 hub_meta.setdefault("close_price_source", "local_mark_fill_error")
                 print(f"[HUB] CLOSE FILL lookup warn: {fill_exc}")
         except Exception as exc:  # noqa: BLE001
-            hub_meta = {"hub_close_error": f"{type(exc).__name__}: {exc}"}
+            err_s = f"{type(exc).__name__}: {exc}"
+            hub_meta = {"hub_close_error": err_s}
             print(f"[HUB] CLOSE ERROR {exc}")
+            # Exchange SL/TP often flats first -> 25227 / no position.
+            # Still resolve Demo fills so journal matches the exchange.
+            already_flat = (
+                "25227" in err_s
+                or "no position available" in err_s.lower()
+                or "position is zero" in err_s.lower()
+            )
+            if already_flat:
+                hub_meta["hub_close_already_flat"] = True
+                try:
+                    from exec.reconcile import resolve_hub_close_fill
+
+                    fill_px, fill_pnl, fill_meta = resolve_hub_close_fill(
+                        pos,
+                        order_id=None,
+                        client=client,
+                    )
+                    hub_meta.update(fill_meta)
+                    if fill_px is not None and fill_px > 0:
+                        price = float(fill_px)
+                        hub_meta["close_price_source"] = "hub_fill"
+                        hub_meta["hub_close_fill_price"] = float(fill_px)
+                        print(
+                            f"[HUB] CLOSE FILL (already flat) {pos.get('symbol')} "
+                            f"px={fill_px} exec_pnl={fill_pnl}"
+                        )
+                    else:
+                        hub_meta.setdefault(
+                            "close_price_source", "local_mark_already_flat"
+                        )
+                    if fill_pnl is not None:
+                        hub_meta["hub_exec_pnl"] = float(fill_pnl)
+                except Exception as fill_exc:  # noqa: BLE001
+                    hub_meta["hub_close_fill_error"] = (
+                        f"{type(fill_exc).__name__}: {fill_exc}"
+                    )
+                    hub_meta.setdefault(
+                        "close_price_source", "local_mark_fill_error"
+                    )
+                    print(f"[HUB] CLOSE FILL (already flat) warn: {fill_exc}")
 
     close_meta = dict(meta or {})
     close_meta.update(hub_meta)
@@ -799,11 +895,31 @@ def close_position(
             realized = float(hub_meta["hub_exec_pnl"])
         except (TypeError, ValueError):
             realized = None
-    return close_paper(
+    # Always attach default RiskGate so record_close persists (smoke/manual).
+    if gate is None and b.gate is None:
+        try:
+            from risk.gate import RiskGate
+
+            gate = RiskGate()
+            b.gate = gate
+        except Exception as _gexc:  # noqa: BLE001
+            print(f"[RISK] default gate attach skipped: {_gexc}")
+    elif gate is not None and b.gate is None:
+        b.gate = gate
+
+    out = close_paper(
         position_id_or_symbol,
         price,
         meta=close_meta,
-        gate=gate,
+        gate=gate or b.gate,
         book=b,
         realized_pnl=realized,
     )
+    try:
+        g = gate or b.gate
+        if g is not None and hasattr(g, "sync_opens_from_paper"):
+            n = g.sync_opens_from_paper(b.list_open())
+            print(f"[RISK] post-close sync opens={n}")
+    except Exception as _sync_exc:  # noqa: BLE001
+        print(f"[RISK] post-close sync skipped: {_sync_exc}")
+    return out

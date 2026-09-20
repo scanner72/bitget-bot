@@ -390,6 +390,20 @@ def run_loop(cfg: LoopConfig | None = None) -> int:
 
 
 def _run_exits(gate: RiskGate, exit_cfg: ExitConfig, cfg: LoopConfig) -> None:
+    # Keep risk open book aligned with paper (repairs smoke/manual closes).
+    try:
+        from exec.paper import list_open
+
+        before = {p.symbol for p in (gate.state.open_positions or [])}
+        n = gate.sync_opens_from_paper(list_open())
+        after = {p.symbol for p in (gate.state.open_positions or [])}
+        if before != after:
+            print(
+                f"[RISK] synced opens from paper: {n} "
+                f"({sorted(before)} -> {sorted(after)})"
+            )
+    except Exception as _sync_exc:  # noqa: BLE001
+        print(f"[RISK] sync opens skipped: {_sync_exc}")
     # Exchange SoT first: drop paper ghosts before soft SL/TP evaluation.
     try:
         from exec.reconcile import reconcile_paper_with_exchange
