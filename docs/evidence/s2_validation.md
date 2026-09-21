@@ -5,35 +5,35 @@ Every figure is labeled; this is an observed Demo run, not a backtest.
 
 ## Observed Bitget UTA Demo
 
-- Period snapshot: 2026-09-09T13:20:07.412654+00:00 → 2026-09-18T03:49:44.516233+00:00 (10 calendar days)
-- Current Demo equity: **9880.54 USDT**
-- Return vs 10,000 start: **-1.195%** (-119.46 USDT)
-- Current unrealized PnL: +0.08 USDT
-- Recent exchange snapshot: 100 fills; close `exec_pnl` +41.64 USDT
-- Fees across those recent fills: 42.57 USDT
+- Period snapshot: 2026-09-09T13:20:07.412654+00:00 → 2026-09-21T11:05:35.749268+00:00 (13 calendar days)
+- Current Demo equity: **9846.42 USDT**
+- Return vs 10,000 start: **-1.536%** (-153.58 USDT)
+- Current unrealized PnL: +3.99 USDT
+- Recent exchange snapshot: 100 fills; close `exec_pnl` +5.93 USDT
+- Fees across those recent fills: 41.64 USDT
 - Funding: **not available in the captured fills payload; excluded**
 
 ## Observed Demo-linked strategy ledger (paper shadow)
 
-- 148 records: 75 opens / 73 closes across 35 instruments
-- W/L/flat: 22/34/17 · win rate **30.14%**
-- Local realized PnL: +27.05 USDT · average close +0.37 USDT
-- Profit factor: 1.228
-- Reconstructed max drawdown: **0.761%**
-- Daily Sharpe (annualized √365): 1.515
-- Daily Sortino (annualized √365): 2.430
-- One-way open notional: 28375.18 USDT (2.837× start AUM)
-- Two-way logged notional: 55750.35 USDT
-- Signed open slippage: mean 92.60 bps, median 57.38 bps, n=45
+- 231 records: 116 opens / 115 closes across 39 instruments
+- W/L/flat: 30/85/0 · win rate **26.09%**
+- Local realized PnL: -65.33 USDT · average close -0.57 USDT
+- Profit factor: 0.758
+- Reconstructed max drawdown: **1.803%**
+- Daily Sharpe (annualized √365): -2.231
+- Daily Sortino (annualized √365): -3.080
+- One-way open notional: 48677.98 USDT (4.868× start AUM)
+- Two-way logged notional: 96855.97 USDT
+- Signed open slippage: mean 121.52 bps, median 82.86 bps, n=86
 
 ## Activation / volume / AUM / risk
 
-- Activation: autonomous Docker desk running against Bitget UTA Demo; 75 observed opens.
-- AI usage: 100 of the captured 100 recent decisions used the LLM path; 0 used rules fallback.
-- Trading volume proxy: 55750.35 USDT two-way logged notional.
-- AUM: 10,000 USDT start; 9880.54 USDT current Demo equity.
-- Retention: 10 calendar days of observed records; no external-user retention claim.
-- Incremental fee evidence: 42.57 USDT across the captured recent exchange fills.
+- Activation: autonomous Docker desk running against Bitget UTA Demo; 116 observed opens.
+- AI usage: 96 of the captured 100 recent decisions used the LLM path; 4 used rules fallback.
+- Trading volume proxy: 96855.97 USDT two-way logged notional.
+- AUM: 10,000 USDT start; 9846.42 USDT current Demo equity.
+- Retention: 13 calendar days of observed records; no external-user retention claim.
+- Incremental fee evidence: 41.64 USDT across the captured recent exchange fills.
 - Risk: $10 risk-to-SL, $500 max notional, 15 total / 4 same-direction positions, $150 daily kill, live mainnet disabled.
 
 ## Method and limitations
