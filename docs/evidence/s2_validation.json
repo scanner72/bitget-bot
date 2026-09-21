@@ -10,10 +10,10 @@
     "calendar_days": 13
   },
   "exchange_snapshot": {
-    "demo_equity_usdt": 9846.4174,
-    "pnl_vs_start_usdt": -153.5826,
-    "return_pct": -1.5358,
-    "unrealized_pnl_usdt": 3.9872,
+    "demo_equity_usdt": 9842.6503,
+    "pnl_vs_start_usdt": -157.3497,
+    "return_pct": -1.5735,
+    "unrealized_pnl_usdt": 0.9408,
     "recent_fill_count": 100,
     "recent_fill_period": [
       "2026-09-18T03:49:43.001000+00:00",

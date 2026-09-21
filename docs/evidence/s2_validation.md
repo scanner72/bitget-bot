@@ -6,9 +6,9 @@ Every figure is labeled; this is an observed Demo run, not a backtest.
 ## Observed Bitget UTA Demo
 
 - Period snapshot: 2026-09-09T13:20:07.412654+00:00 → 2026-09-21T11:05:35.749268+00:00 (13 calendar days)
-- Current Demo equity: **9846.42 USDT**
-- Return vs 10,000 start: **-1.536%** (-153.58 USDT)
-- Current unrealized PnL: +3.99 USDT
+- Current Demo equity: **9842.65 USDT**
+- Return vs 10,000 start: **-1.573%** (-157.35 USDT)
+- Current unrealized PnL: +0.94 USDT
 - Recent exchange snapshot: 100 fills; close `exec_pnl` +5.93 USDT
 - Fees across those recent fills: 41.64 USDT
 - Funding: **not available in the captured fills payload; excluded**
@@ -31,7 +31,7 @@ Every figure is labeled; this is an observed Demo run, not a backtest.
 - Activation: autonomous Docker desk running against Bitget UTA Demo; 116 observed opens.
 - AI usage: 96 of the captured 100 recent decisions used the LLM path; 4 used rules fallback.
 - Trading volume proxy: 96855.97 USDT two-way logged notional.
-- AUM: 10,000 USDT start; 9846.42 USDT current Demo equity.
+- AUM: 10,000 USDT start; 9842.65 USDT current Demo equity.
 - Retention: 13 calendar days of observed records; no external-user retention claim.
 - Incremental fee evidence: 41.64 USDT across the captured recent exchange fills.
 - Risk: $10 risk-to-SL, $500 max notional, 15 total / 4 same-direction positions, $150 daily kill, live mainnet disabled.
