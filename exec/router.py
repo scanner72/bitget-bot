@@ -24,6 +24,10 @@ class DemoPriceMismatchError(RuntimeError):
     """Hub Demo/live mark or fill is on a different scale than public candles."""
 
 
+class HubTpslError(RuntimeError):
+    """Exchange TPSL could not be placed; hub open was fail-closed / flattened."""
+
+
 def exec_mode() -> str:
     mode = (os.getenv("EXEC_MODE") or "paper").strip().lower()
     if mode in {"hub_demo", "demo"}:
@@ -259,6 +263,56 @@ def _recompute_levels_for_entry(
     }
 
 
+def _tick_from_decimals(decimals: int) -> float:
+    return 10.0 ** (-int(decimals))
+
+
+def _round_to_decimals(px: float, decimals: int) -> float:
+    step = 10 ** int(decimals)
+    return round(float(px) * step) / step
+
+
+def _clamp_px_vs_mark(
+    px: float,
+    mark: float,
+    *,
+    must_be_above: bool,
+    buffer_pct: float,
+    decimals: int | None,
+) -> float:
+    """Push px to the legal side of mark; re-bump after tick rounding (25591/25592)."""
+    buf = max(float(buffer_pct), 0.0) / 100.0
+    mark = float(mark)
+    out = float(px)
+    if must_be_above:
+        floor = mark * (1.0 + buf) if buf > 0 else mark * 1.0001
+        if out <= mark:
+            out = floor
+        out = max(out, floor)
+    else:
+        ceiling = mark * (1.0 - buf) if buf > 0 else mark * 0.9999
+        if out >= mark:
+            out = ceiling
+        out = min(out, ceiling)
+    if decimals is None:
+        return out
+    dec = max(0, int(decimals))
+    tick = _tick_from_decimals(dec)
+    out = _round_to_decimals(out, dec)
+    # Rounding can land on/through mark (tight buffer + coarse pricePlace).
+    if must_be_above:
+        while out <= mark:
+            out = _round_to_decimals(out + tick, dec)
+            if tick <= 0:
+                break
+    else:
+        while out >= mark:
+            out = _round_to_decimals(out - tick, dec)
+            if tick <= 0:
+                break
+    return out
+
+
 def _validate_tpsl_vs_mark(
     side: str,
     *,
@@ -266,39 +320,37 @@ def _validate_tpsl_vs_mark(
     tp: float | None,
     mark: float,
     buffer_pct: float = 0.05,
+    decimals: int | None = None,
 ) -> tuple[float | None, float | None]:
     """Ensure Bitget side rules: short SL>mark & TP<mark; long opposite.
 
-    buffer_pct is percent (0.05 = 0.05%).
+    buffer_pct is percent (0.05 = 0.05%). When ``decimals`` is set, levels are
+    rounded to that pricePlace and bumped by one tick if still on the wrong
+    side of mark (Bitget Demo errors 25591 / 25592).
     """
     side_l = str(side).lower()
     is_long = side_l in {"long", "buy"}
-    buf = max(float(buffer_pct), 0.0) / 100.0
     mark = float(mark)
     out_sl = float(sl) if sl is not None else None
     out_tp = float(tp) if tp is not None else None
     if is_long:
         if out_sl is not None:
-            ceiling = mark * (1.0 - buf) if buf > 0 else mark * 0.9999
-            if out_sl >= mark:
-                out_sl = ceiling
-            out_sl = min(out_sl, ceiling)
+            out_sl = _clamp_px_vs_mark(
+                out_sl, mark, must_be_above=False, buffer_pct=buffer_pct, decimals=decimals
+            )
         if out_tp is not None:
-            floor = mark * (1.0 + buf) if buf > 0 else mark * 1.0001
-            if out_tp <= mark:
-                out_tp = floor
-            out_tp = max(out_tp, floor)
+            out_tp = _clamp_px_vs_mark(
+                out_tp, mark, must_be_above=True, buffer_pct=buffer_pct, decimals=decimals
+            )
     else:
         if out_sl is not None:
-            floor = mark * (1.0 + buf) if buf > 0 else mark * 1.0001
-            if out_sl <= mark:
-                out_sl = floor
-            out_sl = max(out_sl, floor)
+            out_sl = _clamp_px_vs_mark(
+                out_sl, mark, must_be_above=True, buffer_pct=buffer_pct, decimals=decimals
+            )
         if out_tp is not None:
-            ceiling = mark * (1.0 - buf) if buf > 0 else mark * 0.9999
-            if out_tp >= mark:
-                out_tp = ceiling
-            out_tp = min(out_tp, ceiling)
+            out_tp = _clamp_px_vs_mark(
+                out_tp, mark, must_be_above=False, buffer_pct=buffer_pct, decimals=decimals
+            )
     return out_sl, out_tp
 
 
@@ -478,8 +530,20 @@ def sync_exchange_sl(
                 tp_f = float(tp2)
         except (TypeError, ValueError):
             tp_f = None
+        px_decimals: int | None = None
+        try:
+            from exec.bitget_hub import price_decimals_for_symbol
+
+            px_decimals = int(price_decimals_for_symbol(str(pos.get("symbol"))))
+        except Exception:  # noqa: BLE001
+            px_decimals = None
         clamped_sl, clamped_tp = _validate_tpsl_vs_mark(
-            side, sl=new_f, tp=tp_f, mark=mark, buffer_pct=0.05
+            side,
+            sl=new_f,
+            tp=tp_f,
+            mark=mark,
+            buffer_pct=0.05,
+            decimals=px_decimals,
         )
         if clamped_sl is not None:
             if abs(clamped_sl - requested_sl) / max(abs(requested_sl), 1e-12) > 1e-6:
@@ -704,8 +768,25 @@ def open_position(
 
         sl_raw = levels.get("sl")
         tp2_raw = levels.get("tp2")
+        # Refresh venue mark right before TPSL — fill-time mark can drift and
+        # Bitget rejects short SL<=mark / TP>=mark (25591/25592).
+        live_mark = _fetch_hub_mark(client, symbol)
+        if live_mark is not None and live_mark > 0:
+            mark = float(live_mark)
+            meta["hub_mark_at_tpsl"] = mark
+        px_decimals: int | None = None
+        try:
+            from exec.bitget_hub import price_decimals_for_symbol
+
+            px_decimals = int(price_decimals_for_symbol(symbol))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[HUB] pricePlace lookup warn {symbol}: {exc}")
         sl_ok, tp_ok = _validate_tpsl_vs_mark(
-            side, sl=sl_raw, tp=tp2_raw, mark=float(mark)
+            side,
+            sl=sl_raw,
+            tp=tp2_raw,
+            mark=float(mark),
+            decimals=px_decimals,
         )
         if sl_ok is not None and sl_raw is not None and abs(sl_ok - float(sl_raw)) > 1e-12:
             meta["sl_adjusted_for_mark"] = True
@@ -718,7 +799,9 @@ def open_position(
             f"[HUB] LEVELS entry={paper_price} mark={mark} "
             f"sl={sl_ok} tp1={levels.get('tp1')} tp2={tp_ok}"
         )
-        if sl_ok is not None or tp_ok is not None:
+        if sl_ok is None and tp_ok is None:
+            meta["hub_tpsl_error"] = "missing_sl_and_tp"
+        else:
             _place_hub_tpsl(
                 client,
                 symbol,
@@ -727,6 +810,21 @@ def open_position(
                 take_profit=tp_ok,
                 meta=meta,
             )
+        # Fail-closed: never keep a naked hub_demo/live open after TPSL failure.
+        if meta.get("hub_tpsl_error"):
+            flatten_qty = str(meta.get("hub_qty") or qty)
+            _flatten_hub_open(
+                client,
+                symbol,
+                side,
+                flatten_qty,
+                meta,
+                reason="tpsl_failed",
+            )
+            meta["hub_tpsl_fail_closed"] = True
+            err = meta.get("hub_tpsl_error")
+            print(f"[HUB] FAIL-CLOSED tpsl {symbol}: {err}")
+            raise HubTpslError(f"{symbol}: {err}")
 
     # Keep paper size_usd as risk/target notional (do NOT overwrite with exchange margin).
     return open_paper(
