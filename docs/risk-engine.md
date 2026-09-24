@@ -41,7 +41,7 @@ On open: `ATR = mean(high-low).tail(14)`.
 - **Crypto:** floor `max(atr, entry * 0.02)`, skip if `atr_pct` &lt; 0.3% or &gt; 6%, ATR on the **signal** TF.
 - **rToken / stocks** (`is_rtoken_symbol`): `RTOKEN_ATR_TF=1h`, `RTOKEN_ATR_FLOOR_PCT=0` (no 2% inflate), skip if `atr_pct` &lt; 0.5%. Quiet mega-caps do not open with an unreachable 2–3% TP.
 - Exchange gets **SL + TP2** on open (`HUB_SYNC_EXCHANGE_SL=1` also pushes SL after BE/trail).
-- **TP1** does not flatten 50%. It marks `tp1_hit`, moves SL to breakeven, starts trail; position stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`).
+- **TP1** closes `TP1_CLOSE_FRACTION` (default 50%) at the mark, writes `exit_status=tp1_hit`, and moves the remainder SL to breakeven. The rest stays open until TP2, trail, SL, dollar-stop, or time stop (`BE_HOURS`, `MAX_HOLD_HOURS`, `EARLY_CLOSE_*`). `TP1_CLOSE_FRACTION=0` keeps the old breakeven-only update.
 - Tick path: `TICK_STOPS=1` evaluates open positions on each WS quote; 30s loop is backup.
 
 ## BTC / pair policy

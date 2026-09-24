@@ -1,6 +1,6 @@
 """Paper TP/SL + risk exits (ported from divergent paper_tracker).
 
-Statuses: sl_hit, tp1_hit (partial BE — position stays open), tp2_hit,
+Statuses: sl_hit, tp1_hit (partial close + BE — remainder stays open), tp2_hit,
 trailing_hit, dollar_stop, expired.
 """
 
@@ -95,6 +95,8 @@ class ExitConfig:
     enable_trailing: bool = True
     enable_stagnation: bool = False  # optional; off by default for bitget-bot
     atr_period: int = ATR_PERIOD
+    # Share of size closed when TP1 prints. Remainder stays open with SL at entry.
+    tp1_close_fraction: float = 0.5
 
     @classmethod
     def from_env(cls) -> "ExitConfig":
@@ -113,6 +115,7 @@ class ExitConfig:
             enable_trailing=_env_bool("ENABLE_TRAILING", True),
             enable_stagnation=_env_bool("ENABLE_STAGNATION_EXIT", False),
             atr_period=max(2, _env_int("ATR_PERIOD", ATR_PERIOD)),
+            tp1_close_fraction=min(0.95, max(0.0, _env_float("TP1_CLOSE_FRACTION", 0.5))),
         )
 
 
@@ -344,12 +347,24 @@ def evaluate_exit(
             updates["sl"] = entry
             updates["tp1_hit"] = True
             updates["tp1_hit_ts"] = now.isoformat()
+            frac = float(cfg.tp1_close_fraction)
+            if frac > 0 and not bool(_pos_get(pos, "tp1_reduced", False)):
+                updates["tp1_close_fraction"] = frac
+                updates["tp1_reduced"] = True
             # Keep original_sl for trailing activation distance
             if _pos_get(pos, "original_sl") is None and sl is not None:
                 updates["original_sl"] = sl
             sl = entry
             tp1_hit = True
-            # Continue — may trail / check other exits same bar
+            if updates.get("tp1_reduced"):
+                return ExitEvent(
+                    action="reduce",
+                    status="tp1_hit",
+                    close_price=cur_price or tp1,
+                    updates=updates,
+                    note="tp1_partial",
+                )
+            # Fraction 0: BE only, then trail on this bar
 
     # 4) Trailing after TP1 (or when trailing_active)
     if cfg.enable_trailing and status is None:
@@ -505,6 +520,60 @@ def mark_exit_check_ran() -> None:
     _last_exit_check_mono = time.monotonic()
 
 
+def _reduce_hub_qty(pos: dict[str, Any], fraction: float, meta: dict[str, Any]) -> str:
+    """Market-reduce the hub position. Returns ok | skip_paper | paper."""
+    import os
+
+    mode = (os.getenv("EXEC_MODE") or "paper").strip().lower()
+    if mode not in {"hub_demo", "live", "demo", "hub_live"}:
+        return "paper"
+    if mode in {"live", "hub_live"}:
+        allow = (os.getenv("BITGET_ALLOW_LIVE") or "").strip().lower()
+        if allow not in {"1", "true", "yes"}:
+            meta["hub_tp1_error"] = "live_blocked"
+            return "skip_paper"
+    try:
+        from exec.bitget_hub import BitgetUtaClient
+        from exec.router import _qty_from_size
+    except Exception as exc:  # noqa: BLE001
+        meta["hub_tp1_error"] = f"{type(exc).__name__}: {exc}"
+        return "skip_paper"
+    symbol = str(pos.get("symbol") or "")
+    side = str(pos.get("side") or "long")
+    raw_qty = (pos.get("meta") or {}).get("hub_qty") or pos.get("qty")
+    try:
+        qty_f = float(raw_qty)
+    except (TypeError, ValueError):
+        qty_f = 0.0
+    if qty_f <= 0:
+        entry = float(pos.get("entry_price") or 0)
+        size = float(pos.get("size_usd") or 0)
+        if entry > 0 and size > 0:
+            qty_f = float(_qty_from_size(size * fraction, entry))
+            part = str(qty_f)
+        else:
+            meta["hub_tp1_error"] = "no_qty"
+            return "skip_paper"
+    else:
+        part_f = qty_f * float(fraction)
+        part = f"{part_f:.8f}".rstrip("0").rstrip(".")
+    if not part or part == "0":
+        meta["hub_tp1_error"] = "qty_rounded_to_0"
+        return "skip_paper"
+    try:
+        client = BitgetUtaClient.from_env()
+        closed = client.close_perp_market(symbol, side, part)
+        meta["hub_tp1_order_id"] = closed.get("orderId")
+        meta["hub_tp1_client_oid"] = closed.get("clientOid")
+        meta["hub_tp1_qty"] = part
+        print(f"[HUB] TP1 REDUCE {side} {symbol} qty={part} orderId={closed.get('orderId')}")
+        return "ok"
+    except Exception as exc:  # noqa: BLE001
+        meta["hub_tp1_error"] = f"{type(exc).__name__}: {exc}"
+        print(f"[HUB] TP1 REDUCE ERROR {symbol}: {exc}")
+        return "skip_paper"
+
+
 def apply_exit_event(
     pos: dict[str, Any],
     ev: ExitEvent,
@@ -519,6 +588,82 @@ def apply_exit_event(
     sym = str(pos.get("symbol") or "")
     if ev.action == "none":
         return None
+
+    if ev.action == "reduce" and ev.close_price is not None and ev.updates:
+        frac = float(ev.updates.get("tp1_close_fraction") or 0.0)
+        reduce_meta = {
+            "exit_status": ev.status or "tp1_hit",
+            "exit_note": ev.note or "tp1_partial",
+            "tp1_hit": True,
+        }
+        hub_note = _reduce_hub_qty(pos, frac, reduce_meta)
+        if hub_note == "skip_paper":
+            # One attempt: keep full size, still park SL at entry.
+            updated = apply_position_updates(
+                pos, {**ev.updates, **reduce_meta, "tp1_reduced": False}
+            )
+            if ev.updates.get("sl") is not None:
+                try:
+                    from exec.router import sync_exchange_sl
+
+                    hub_meta = sync_exchange_sl(updated, ev.updates["sl"], reason="tp1_be")
+                    if hub_meta:
+                        updated = apply_position_updates(updated, hub_meta)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
+            book.update_position(pid, updated)
+            print(f"[EXIT] TP1 REDUCE SKIP {pid} {sym}: {reduce_meta.get('hub_tp1_error')}")
+            return {
+                "action": "update",
+                "position_id": pid,
+                "symbol": sym,
+                "status": "tp1_hit",
+                "note": reduce_meta.get("hub_tp1_error"),
+            }
+        try:
+            reduced = book.reduce_paper(
+                pid,
+                float(ev.close_price),
+                frac,
+                meta=reduce_meta,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[EXIT] ERROR tp1 reduce {pid} {sym}: {exc}")
+            updated = apply_position_updates(
+                pos, {**ev.updates, "tp1_reduce_error": f"{type(exc).__name__}: {exc}"}
+            )
+            book.update_position(pid, updated)
+            return {"action": "error", "position_id": pid, "symbol": sym, "error": str(exc)}
+        pnl_booked = reduced.get("realized_pnl")
+        fill_booked = reduced.get("fill_id")
+        for extra in ("fill_id", "realized_pnl", "closed_size_usd"):
+            reduced.pop(extra, None)
+        updated = apply_position_updates(reduced, ev.updates)
+        if "sl" in ev.updates and ev.updates.get("sl") is not None:
+            try:
+                from exec.router import sync_exchange_sl
+
+                hub_meta = sync_exchange_sl(updated, ev.updates["sl"], reason="tp1_be")
+                if hub_meta:
+                    updated = apply_position_updates(updated, hub_meta)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[EXIT] hub SL sync skip {pid} {sym}: {exc}")
+        book.update_position(pid, updated)
+        print(
+            f"[EXIT] TP1 REDUCE {pid} {sym} frac={frac} "
+            f"@ {ev.close_price} pnl={pnl_booked} "
+            f"left={updated.get('size_usd')} sl={updated.get('sl')}"
+        )
+        return {
+            "action": "reduce",
+            "position_id": pid,
+            "symbol": sym,
+            "status": "tp1_hit",
+            "close_price": ev.close_price,
+            "realized_pnl": pnl_booked,
+            "fill_id": fill_booked,
+            "size_usd_left": updated.get("size_usd"),
+        }
 
     if ev.action == "update" and ev.updates:
         updated = apply_position_updates(pos, ev.updates)
