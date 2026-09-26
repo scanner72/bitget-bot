@@ -438,16 +438,19 @@ def reconcile_paper_with_exchange(
                 )
                 continue
 
-        px = _close_price(pos)
-        fill_meta = pos.pop("_reconcile_fill_meta", None) or {}
-        if px <= 0:
+        px, fill_meta = _close_from_exchange(pos)
+        if px is None or px <= 0:
             events.append(
                 {
-                    "action": "error",
+                    "action": "skip_no_close_fill",
                     "position_id": pos.get("position_id"),
                     "symbol": pos.get("symbol"),
-                    "error": "no_close_price",
+                    "note": "position not on exchange yet; no close fill",
                 }
+            )
+            print(
+                f"[RECONCILE] keep {pos.get('position_id')} {pos.get('symbol')} "
+                "(no exchange close fill)"
             )
             continue
 

@@ -457,6 +457,64 @@ def _place_hub_tpsl(
         print(f"[HUB] TPSL ERROR {symbol}: {exc}")
 
 
+def _tpsl_not_ready(err: str) -> bool:
+    """31008: market fill is not in the position book yet."""
+    text = err.lower()
+    return "31008" in text or "no position in this position" in text
+
+
+def _ensure_hub_tpsl(
+    client: Any,
+    symbol: str,
+    side: str,
+    *,
+    stop_loss: float | None,
+    take_profit: float | None,
+    meta: dict[str, Any],
+    qty: str,
+) -> None:
+    """Retry TP/SL while Bitget 31008 says the fill is not in the position book.
+
+    Delays are 0, 0.6, 1.2, 2.0s. Each attempt re-finds the hub row and refreshes
+    qty. A non-31008 error returns immediately. Exhaustion leaves
+    ``meta['hub_tpsl_error']`` set so the caller fail-closes with flatten +
+    HubTpslError. An empty error (placer stub that did not record an id) also
+    returns without forcing a flatten.
+    """
+    delays = (0.0, 0.6, 1.2, 2.0)
+    for i, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        hub = _find_hub_position(client, symbol, side, retries=2, delay_sec=0.3)
+        if hub is None:
+            meta["hub_tpsl_error"] = "position_not_visible"
+            print(
+                f"[HUB] TPSL wait {symbol}: position not visible "
+                f"({i + 1}/{len(delays)})"
+            )
+            continue
+        live_qty = hub.get("available") or hub.get("total")
+        if live_qty is not None:
+            qty = str(live_qty)
+            meta["hub_qty"] = qty
+        elif qty:
+            meta.setdefault("hub_qty", str(qty))
+        _place_hub_tpsl(
+            client,
+            symbol,
+            side,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            meta=meta,
+        )
+        if meta.get("hub_tpsl_order_id") and not meta.get("hub_tpsl_error"):
+            return
+        err = str(meta.get("hub_tpsl_error") or "")
+        if not _tpsl_not_ready(err):
+            return
+    print(f"[HUB] TPSL give up {symbol}: {meta.get('hub_tpsl_error')}")
+
+
 def sync_exchange_sl(
     pos: dict[str, Any],
     new_sl: float | str,
@@ -505,19 +563,21 @@ def sync_exchange_sl(
     side = str(pos.get("side") or meta.get("side") or "long")
     tp2 = pos.get("tp2") if pos.get("tp2") is not None else meta.get("tp2")
     tp2 = meta.get("hub_tp2_price") or tp2
-    # Clamp SL/TP vs live mark so Bitget 25590 is not hit on BE/trail.
-    mark = None
-    for src in (
-        pos.get("mark_price"),
-        meta.get("mark_price"),
-        meta.get("hub_mark_at_open"),
-    ):
-        try:
-            if src is not None and float(src) > 0:
-                mark = float(src)
-                break
-        except (TypeError, ValueError):
-            pass
+    # Clamp against the Demo mark. A public mark above entry lets a breakeven
+    # stop through locally, then Bitget rejects it (25590) because Demo is lower.
+    mark = _fetch_hub_mark(client, str(pos.get("symbol") or ""))
+    if mark is None:
+        for src in (
+            pos.get("mark_price"),
+            meta.get("mark_price"),
+            meta.get("hub_mark_at_open"),
+        ):
+            try:
+                if src is not None and float(src) > 0:
+                    mark = float(src)
+                    break
+            except (TypeError, ValueError):
+                pass
     if mark is None:
         try:
             from ingest.bitget_ohlcv import get_mark_price
@@ -805,13 +865,14 @@ def open_position(
         if sl_ok is None and tp_ok is None:
             meta["hub_tpsl_error"] = "missing_sl_and_tp"
         else:
-            _place_hub_tpsl(
+            _ensure_hub_tpsl(
                 client,
                 symbol,
                 side,
                 stop_loss=sl_ok,
                 take_profit=tp_ok,
                 meta=meta,
+                qty=str(meta.get("hub_qty") or qty),
             )
         # Fail-closed: never keep a naked hub_demo/live open after TPSL failure.
         if meta.get("hub_tpsl_error"):

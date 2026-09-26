@@ -225,6 +225,100 @@ def main() -> int:
         _assert(tpsl_client.closed == 1, f"closed={tpsl_client.closed}")
         _assert(book3b.list_open() == [], book3b.list_open())
 
+        # 3c) 31008 (position book lag): retry with backoff, then succeed.
+        class _SeqTpslClient(_HubClient):
+            def __init__(self, pos: dict, errors: list[Exception | None]) -> None:
+                super().__init__(pos)
+                self._errors = list(errors)
+
+            def place_position_tpsl(self, *args, **kwargs):
+                self.tpsl_calls += 1
+                if self._errors:
+                    err = self._errors.pop(0)
+                    if err is not None:
+                        raise err
+                return {"orderId": f"tpsl-{self.tpsl_calls}", "clientOid": "c-tpsl"}
+
+        retry_pos = {
+            "symbol": "AAPLUSDT",
+            "posSide": "long",
+            "total": "1.5",
+            "available": "1.5",
+            "avgPrice": "332.10",
+            "markPrice": "332.20",
+        }
+        retry_client = _SeqTpslClient(
+            retry_pos,
+            [RuntimeError("HTTP 400 code=31008: No position in this position")],
+        )
+        book3c = _book(tdir, "tpsl31008ok")
+        slept: list[float] = []
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            router_mod, "symbol_tradable_on_demo", return_value=True
+        ), patch.object(router_mod, "exec_mode", return_value="hub_demo"), patch(
+            "exec.bitget_hub.BitgetUtaClient.from_env", return_value=retry_client
+        ), patch.object(router_mod, "_qty_ref_price", return_value=331.57), patch.object(
+            router_mod, "_fetch_hub_mark", return_value=332.19
+        ), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
+        ), patch.object(router_mod.time, "sleep", side_effect=lambda s: slept.append(float(s))):
+            pid = router_mod.open_position(
+                symbol="AAPL/USDT:USDT",
+                side="long",
+                size_usd=500.0,
+                price=331.57,
+                meta={"atr": 2.0},
+                book=book3c,
+            )
+        opens = book3c.list_open()
+        _assert(len(opens) == 1, opens)
+        _assert(opens[0]["position_id"] == pid, opens[0])
+        _assert(retry_client.tpsl_calls == 2, retry_client.tpsl_calls)
+        _assert(retry_client.closed == 0, retry_client.closed)
+        _assert(slept == [0.6], slept)
+        _assert((opens[0].get("meta") or {}).get("hub_tpsl_order_id") == "tpsl-2", opens[0])
+        _assert((opens[0].get("meta") or {}).get("hub_qty") == "1.5", opens[0])
+
+        # 3d) 31008 exhausted: same backoff, then main's fail-closed flatten.
+        class _Always31008(_HubClient):
+            def place_position_tpsl(self, *args, **kwargs):
+                self.tpsl_calls += 1
+                raise RuntimeError("HTTP 400 code=31008: No position in this position")
+
+        exhaust_client = _Always31008(ltc_pos)
+        book3d = _book(tdir, "tpsl31008fail")
+        slept_ex: list[float] = []
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            router_mod, "symbol_tradable_on_demo", return_value=True
+        ), patch.object(router_mod, "exec_mode", return_value="hub_demo"), patch(
+            "exec.bitget_hub.BitgetUtaClient.from_env", return_value=exhaust_client
+        ), patch.object(router_mod, "_qty_ref_price", return_value=58.02), patch.object(
+            router_mod, "_fetch_hub_mark", return_value=59.80
+        ), patch.object(router_mod, "_find_hub_position", return_value=ltc_pos), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
+        ), patch.object(
+            router_mod.time, "sleep", side_effect=lambda s: slept_ex.append(float(s))
+        ):
+            raised = False
+            try:
+                router_mod.open_position(
+                    symbol="LTC/USDT:USDT",
+                    side="short",
+                    size_usd=500.0,
+                    price=58.02,
+                    meta={"atr": 1.2},
+                    book=book3d,
+                )
+            except HubTpslError as exc:
+                raised = True
+                _assert("31008" in str(exc), str(exc))
+        _assert(raised, "exhausted 31008 must fail-closed")
+        _assert(exhaust_client.tpsl_calls == 4, exhaust_client.tpsl_calls)
+        _assert(exhaust_client.placed == 1, exhaust_client.placed)
+        _assert(exhaust_client.closed == 1, exhaust_client.closed)
+        _assert(slept_ex == [0.6, 1.2, 2.0], slept_ex)
+        _assert(book3d.list_open() == [], book3d.list_open())
+
         # 4) Pipeline records the skip, no fill.
         os.environ["EXEC_MODE"] = "paper"
         os.environ["AGENT_MODE"] = "rules"
