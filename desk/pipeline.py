@@ -11,7 +11,7 @@ from agent.decide import decide
 from desk.decision_log import append_sealed_decision, ensure_session_id
 from exec.demo_universe import NotOnDemoError
 from exec.paper import PaperBook
-from exec.router import DemoPriceMismatchError, open_position
+from exec.router import DemoPriceMismatchError, HubTpslError, open_position
 from ingest.symbols import to_display
 from risk.gate import RiskGate
 from risk.sizing import notional_from_risk
@@ -258,6 +258,9 @@ def evaluate_candidate(
         except DemoPriceMismatchError as exc:
             paper_error = f"demo_price_mismatch:{exc}"
             print(f"[HUB] SKIP price mismatch: {exc}")
+        except HubTpslError as exc:
+            paper_error = f"hub_tpsl_fail_closed:{exc}"
+            print(f"[HUB] SKIP tpsl fail-closed: {exc}")
         except Exception as exc:  # noqa: BLE001
             paper_error = f"{type(exc).__name__}: {exc}"
             print(f"[PAPER] ERROR open failed: {paper_error}")

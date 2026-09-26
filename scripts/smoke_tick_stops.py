@@ -61,7 +61,14 @@ def main() -> int:
         _assert(high == 10.4, high)
         _assert(low == 10.0, low)
 
-        env = {"EXEC_MODE": "paper", "TICK_STOPS": "1"}
+        env = {
+            "EXEC_MODE": "paper",
+            "TICK_STOPS": "1",
+            # Intentional TP1 wick (~8.5% from entry); mark-sanity is for Demo/public
+            # scale drift, not strategy exit distance on paper.
+            "MARK_SANITY_MAX_DEV_PCT": "25",
+            "RTOKEN_MARK_SANITY_MAX_DEV_PCT": "25",
+        }
         # TP1 tag (short: low <= 9.2) → BE update, still open
         bus.on_quote("ONDO/USDT:USDT", 9.15, 9.4, 9.1)
         with patch.dict(os.environ, env, clear=False):

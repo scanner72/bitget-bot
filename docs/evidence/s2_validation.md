@@ -43,3 +43,13 @@ Every figure is labeled; this is an observed Demo run, not a backtest.
 3. The sample is short; Sharpe/Sortino are exploratory and must not be presented as stable expected performance.
 4. The recent exchange snapshot is capped at 100 fills.
 5. Funding is excluded because it is absent from the captured payload.
+6. External Demo batch closes may be booked only via reconcile (`missing_on_exchange`); hub fills still supply PnL.
+7. Short TPSL mark-side rejects (25591/25592) are clamped then fail-closed; `USDCUSDT` is deny-listed.
+
+## Exchange-side Demo observations
+
+Observed / mitigated (see also [`docs/DEMO.md`](../DEMO.md)):
+
+- **external_batch_closes** — observed: Demo positions closed externally in batches; local journal booked via reconcile missing_on_exchange without hub_close_client_oid. Mitigated: exec/reconcile.py flats local ghosts and backfills hub fills/PnL; /equity+/fills remain money SoT.
+- **tpsl_25591_25592** — observed: Bitget place-strategy-order rejected short TP/SL on the wrong side of mark (HTTP 400 codes 25591/25592), leaving unprotected opens. Mitigated: Tick-aware SL/TP clamp vs venue mark before place; hub_tpsl_error fail-closes (flatten) the new hub open.
+- **usdc_junk_pair** — observed: USDC/USDT:USDT produced noise BULLISH_DIV opens. Mitigated: DEFAULT_TRADE_DENY_IDS includes USDCUSDT; TRADE_DENY_SYMBOLS extends the same deny path at scan, gate, and router.
