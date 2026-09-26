@@ -501,6 +501,100 @@ class PaperBook:
             "exit_status": close_meta.get("exit_status"),
         }
 
+    def reduce_paper(
+        self,
+        position_id_or_symbol: str,
+        price: float,
+        fraction: float,
+        *,
+        meta: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Close `fraction` of an open position. Remainder stays open."""
+        key = str(position_id_or_symbol).strip()
+        price = float(price)
+        fraction = min(0.95, max(0.0, float(fraction)))
+        if price <= 0:
+            raise ValueError("price must be > 0")
+        if fraction <= 0:
+            raise ValueError("fraction must be > 0")
+
+        self._positions = _load_positions(self.positions_file)
+        idx = next(
+            (i for i, p in enumerate(self._positions) if p.get("position_id") == key),
+            None,
+        )
+        if idx is None:
+            idx = next(
+                (i for i, p in enumerate(self._positions) if p.get("symbol") == key),
+                None,
+            )
+        if idx is None:
+            raise KeyError(f"no open paper position for {key!r}")
+
+        pos = dict(self._positions[idx])
+        entry = float(pos.get("entry_price") or 0)
+        size_usd = float(pos.get("size_usd") or 0)
+        side = str(pos.get("side") or "long")
+        symbol = str(pos.get("symbol") or "")
+        qty = float(pos.get("qty") or _qty_from_size(size_usd, entry if entry else price))
+        closed_size = size_usd * fraction
+        closed_qty = qty * fraction
+        if closed_size <= 0 or closed_qty <= 0:
+            raise ValueError("reduce size rounded to 0")
+        pnl = _realize_pnl(side, entry, price, closed_size)
+        close_meta = dict(meta or {})
+        close_meta.setdefault("exit_status", "tp1_hit")
+        close_meta["tp1_partial"] = True
+        close_meta["tp1_close_fraction"] = fraction
+        fill_id = _new_id("fill")
+        now = _utc_now()
+        fill = {
+            "ts": now.isoformat(),
+            "fill_id": fill_id,
+            "position_id": pos.get("position_id"),
+            "event": "close",
+            "symbol": symbol,
+            "side": side,
+            "size_usd": closed_size,
+            "qty": closed_qty,
+            "price": price,
+            "entry_price": entry,
+            "realized_pnl": pnl,
+            "meta": close_meta,
+        }
+        _append_jsonl(self.fills_file, fill)
+
+        pos["size_usd"] = size_usd - closed_size
+        pos["qty"] = qty - closed_qty
+        meta_pos = dict(pos.get("meta") or {})
+        meta_pos["tp1_reduced"] = True
+        meta_pos["tp1_hit"] = True
+        meta_pos["size_usd_left"] = pos["size_usd"]
+        pos["meta"] = meta_pos
+        pos["tp1_hit"] = True
+        pos["tp1_reduced"] = True
+        self._positions[idx] = pos
+        _save_positions(self._positions, self.positions_file)
+
+        acct = self.account or get_account()
+        acct.release_close(closed_size, pnl)
+        if self.gate is not None:
+            self.gate.record_reduce(
+                symbol,
+                closed_size,
+                pnl,
+                ts=now,
+            )
+        print(
+            f"[PAPER] TP1 {pos.get('position_id')} {side} {symbol} "
+            f"frac={fraction} @ {price} pnl={pnl:.4f} left={pos['size_usd']:.4f} fill={fill_id}"
+        )
+        out = dict(pos)
+        out["fill_id"] = fill_id
+        out["realized_pnl"] = pnl
+        out["closed_size_usd"] = closed_size
+        return out
+
 
 # Module-level default book (lazy); pipeline may pass an explicit gate.
 _default_book: PaperBook | None = None

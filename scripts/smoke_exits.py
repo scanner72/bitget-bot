@@ -151,6 +151,7 @@ def main() -> int:
                 max_loss_pct_of_margin=0,
                 early_close_hours=0,
                 enable_trailing=False,  # isolate TP1 BE
+                tp1_close_fraction=0,
             ),
         )
         print(f"TP1 event: action={ev_tp1.action} status={ev_tp1.status} updates={ev_tp1.updates}")
@@ -162,6 +163,48 @@ def main() -> int:
         pos_c2 = next(p for p in book.list_open() if p["position_id"] == pid_c)
         _assert(abs(float(pos_c2["sl"]) - entry) < 1e-9, pos_c2)
         _assert(pos_c2.get("tp1_hit") is True or pos_c2["meta"].get("tp1_hit") is True, pos_c2)
+
+        # --- Case C2: TP1 closes half, SL of the remainder goes to entry ---
+        from risk.exits import apply_exit_event
+
+        pid_p = open_paper(
+            "TESTP/USDT:USDT",
+            "long",
+            100.0,
+            entry,
+            meta=dict(meta_a),
+            book=book,
+        )
+        pos_p = next(p for p in book.list_open() if p["position_id"] == pid_p)
+        ev_part = evaluate_exit(
+            pos_p,
+            candle_high=103.2,
+            candle_low=101.0,
+            mark_price=103.0,
+            df=_df([(101, 103.2, 101.0, 103.0)] * 20),
+            cfg=ExitConfig(
+                be_hours=999,
+                max_hold_hours=999,
+                max_loss_pct_of_margin=0,
+                early_close_hours=0,
+                enable_trailing=False,
+                tp1_close_fraction=0.5,
+            ),
+        )
+        _assert(ev_part.action == "reduce", ev_part)
+        _assert(ev_part.status == "tp1_hit", ev_part)
+        _assert(abs(float(ev_part.updates["sl"]) - entry) < 1e-9, ev_part.updates)
+        import os
+        os.environ["EXEC_MODE"] = "paper"
+        applied = apply_exit_event(pos_p, ev_part, book=book, gate=None)
+        _assert(applied and applied.get("action") == "reduce", applied)
+        _assert(abs(float(applied["realized_pnl"]) - 1.5) < 1e-6, applied)
+        pos_left = next(p for p in book.list_open() if p["position_id"] == pid_p)
+        _assert(abs(float(pos_left["size_usd"]) - 50.0) < 1e-6, pos_left)
+        _assert(abs(float(pos_left["sl"]) - entry) < 1e-9, pos_left)
+        _assert(bool(pos_left.get("tp1_hit") or pos_left["meta"].get("tp1_hit")), pos_left)
+        fills_txt = fills.read_text(encoding="utf-8")
+        _assert("tp1_hit" in fills_txt, fills_txt[-400:])
 
         # --- Case D: P1 hard BE — after TP1, wide ATR trail must not push SL below entry ---
         from risk.exits import update_trailing_sl
@@ -212,6 +255,7 @@ def main() -> int:
 
         # cleanup remaining
         book.close_paper(pid_c, entry, meta={"exit_status": "smoke_cleanup"})
+        book.close_paper(pid_p, entry, meta={"exit_status": "smoke_cleanup"})
 
         print("smoke_exits OK: sl_hit + tp2_hit + tp1_be + hard_be_p1")
         return 0

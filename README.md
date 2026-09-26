@@ -18,7 +18,7 @@ Bitget AI Hackathon **S2**, track **Agentic Trading**. Public Bitget OHLCV → R
 | Piece | This desk |
 |-------|-----------|
 | Exec | `EXEC_MODE=hub_demo`, `BITGET_DEMO=1` — UTA Demo (`paptrading`) market open/close at `HUB_LEVERAGE=20`, exchange SL+TP2 |
-| Shadow | Local paper book: ATR TP1 → SL to breakeven + trail; UI / fills |
+| Shadow | Local paper book: ATR TP1 partial close + SL to breakeven + trail; UI / fills |
 | Scan | Full Bitget **Demo UTA** catalog (`hub_demo`). Public top-N is not used. `PAPER_FALLBACK=0` |
 | TF | `TIMEFRAMES=15m,1h,4h`. `TF_BLOCKER_ENABLED=0` |
 | Sides | Long and short. `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` (no `LEVEL_CROSS_UP`) |
