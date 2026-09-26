@@ -594,18 +594,6 @@ class PaperBook:
         out["realized_pnl"] = pnl
         out["closed_size_usd"] = closed_size
         return out
-        return {
-            "position_id": pos.get("position_id"),
-            "fill_id": fill_id,
-            "symbol": symbol,
-            "side": side,
-            "entry_price": entry,
-            "exit_price": price,
-            "size_usd": size_usd,
-            "qty": qty,
-            "realized_pnl": pnl,
-            "exit_status": close_meta.get("exit_status"),
-        }
 
 
 # Module-level default book (lazy); pipeline may pass an explicit gate.
