@@ -727,6 +727,13 @@ class BitgetUtaClient:
             try:
                 return self.modify_strategy_order(**body)
             except Exception as exc:  # noqa: BLE001
+                # 25590/25592: the new stop is on the wrong side of the mark.
+                # Placing a fresh order sends the same illegal price and can
+                # drop the working bracket. Keep the existing order.
+                msg = str(exc)
+                if "25590" in msg or "25592" in msg:
+                    print(f"[HUB] modify SL rejected, keep existing: {exc}")
+                    raise
                 print(f"[HUB] modify SL failed, place new: {exc}")
         return self.place_position_tpsl(
             symbol,

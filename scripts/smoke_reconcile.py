@@ -47,6 +47,7 @@ def main() -> int:
         book.open_paper("AVAX/USDT:USDT", "short", 100.0, 7.5, meta={"test": True})
         book.open_paper("SHIB/USDT:USDT", "short", 100.0, 5e-6, meta={"test": True})
         book.open_paper("SAMSUNG/USDT:USDT", "short", 100.0, 1.88, meta={"test": True})
+        book.open_paper("DOGE/USDT:USDT", "long", 100.0, 0.1, meta={"test": True})
         book.open_paper(
             "ONDO/USDT:USDT",
             "short",
@@ -57,7 +58,12 @@ def main() -> int:
 
         for p in book.list_open():
             sym = str(p.get("symbol") or "")
-            if sym.startswith("AVAX") or sym.startswith("SAMSUNG") or sym.startswith("ONDO"):
+            if (
+                sym.startswith("AVAX")
+                or sym.startswith("SAMSUNG")
+                or sym.startswith("ONDO")
+                or sym.startswith("DOGE")
+            ):
                 p["opened_ts"] = old_ts
             elif sym.startswith("SHIB"):
                 p["opened_ts"] = fresh_ts
@@ -70,7 +76,13 @@ def main() -> int:
         ), patch.object(rec_mod, "reconcile_grace_sec", return_value=60.0), patch.object(
             rec_mod, "_hub_open_keys", return_value=(hub_keys, None)
         ), patch.object(
-            rec_mod, "_close_price", side_effect=lambda pos: float(pos["entry_price"])
+            rec_mod,
+            "_close_from_exchange",
+            side_effect=lambda pos, **_k: (
+                (float(pos["entry_price"]), {"hub_exec_pnl": 0.0, "close_price_source": "hub_fill"})
+                if str(pos.get("symbol") or "").startswith("AVAX")
+                else (None, {})
+            ),
         ):
             events = rec_mod.reconcile_paper_with_exchange(
                 book=book, force=True, now=now
@@ -85,8 +97,14 @@ def main() -> int:
         _assert("AVAX" not in left, "AVAX ghost should be closed")
         _assert("SHIB" in left, "fresh SHIB should remain (grace)")
         _assert("SAMSUNG" in left, "SAMSUNG on hub must remain")
+        _assert("DOGE" in left, "DOGE with no close fill must remain")
         _assert("ONDO" in left, "paper-live ONDO must not be reconciled")
         _assert("skip_paper_live" in actions, "expected paper-live skip")
+        _assert("skip_no_close_fill" in actions, "expected skip when no close fill")
+        _assert(
+            all(e.get("error") != "no_close_price" for e in events),
+            events,
+        )
 
         closes = []
         for line in fills.read_text(encoding="utf-8").splitlines():

@@ -190,6 +190,145 @@ def main() -> int:
         _assert(stop_client.calls == 2, stop_client.calls)
         _assert(abs(stop_client.sent[1] - 343.67) < 1e-9, stop_client.sent)
 
+    # 25590/25592: keep the working strategy order; do not place a fresh bracket.
+    def _keep_on_side_error(code: str) -> None:
+        keeper = _client()
+        placed_fresh = {"n": 0}
+
+        def _modify_reject(self, **kwargs):  # noqa: ARG001
+            raise RuntimeError(
+                f"Bitget API error code={code} msg=stop on wrong side of mark"
+            )
+
+        def _place_fresh(self, *args, **kwargs):  # noqa: ARG001
+            placed_fresh["n"] += 1
+            return {"orderId": "fresh"}
+
+        keeper.modify_strategy_order = _modify_reject.__get__(keeper, type(keeper))  # type: ignore[method-assign]
+        keeper.place_position_tpsl = _place_fresh.__get__(keeper, type(keeper))  # type: ignore[method-assign]
+        raised = False
+        try:
+            keeper.set_position_stop_loss(
+                "BTC/USDT:USDT",
+                "long",
+                100.0,
+                order_id="sl-keep",
+                take_profit=120.0,
+            )
+        except RuntimeError as exc:
+            raised = True
+            _assert(code in str(exc), exc)
+        _assert(raised, code)
+        _assert(placed_fresh["n"] == 0, (code, placed_fresh))
+
+    with patch(
+        "exec.bitget_hub.price_decimals_for_symbol", return_value=2
+    ), patch.object(
+        socket.socket, "connect", _refuse_network
+    ), patch(
+        "socket.create_connection", _refuse_network
+    ):
+        for code in ("25590", "25592"):
+            _keep_on_side_error(code)
+
+        other = _client()
+        placed_other = {"n": 0}
+
+        def _modify_other(self, **kwargs):  # noqa: ARG001
+            raise RuntimeError("Bitget API error code=40001 msg=temporary")
+
+        def _place_other(self, *args, **kwargs):  # noqa: ARG001
+            placed_other["n"] += 1
+            return {"orderId": "fresh-other"}
+
+        other.modify_strategy_order = _modify_other.__get__(other, type(other))  # type: ignore[method-assign]
+        other.place_position_tpsl = _place_other.__get__(other, type(other))  # type: ignore[method-assign]
+        moved = other.set_position_stop_loss(
+            "BTC/USDT:USDT", "long", 100.0, order_id="sl-other"
+        )
+        _assert(moved.get("orderId") == "fresh-other", moved)
+        _assert(placed_other["n"] == 1, placed_other)
+
+    # Demo hub mark wins over a higher stored/public mark (long SL must sit below it).
+    demo_client = StopClient()
+    demo_pos = {
+        "symbol": "GOOGL/USDT:USDT",
+        "side": "long",
+        "mark_price": 360.0,
+        "tp2": 361.69,
+        "meta": {
+            "exec_venue": "hub",
+            "hub_sl_price": "330.00",
+            "hub_sl_order_id": "sl-demo",
+            "hub_mark_at_open": 360.0,
+            "mark_price": 360.0,
+        },
+    }
+    with patch.dict(
+        os.environ,
+        {"EXEC_MODE": "hub_demo", "BITGET_DEMO": "1", "HUB_SYNC_EXCHANGE_SL": "1"},
+        clear=False,
+    ), patch(
+        "exec.bitget_hub.BitgetUtaClient.from_env",
+        return_value=demo_client,
+    ), patch(
+        "exec.router._fetch_hub_mark",
+        return_value=340.0,
+    ), patch(
+        "ingest.bitget_ohlcv.get_mark_price",
+        return_value=350.0,
+    ), patch(
+        "exec.bitget_hub.price_decimals_for_symbol",
+        return_value=2,
+    ), patch.object(
+        socket.socket, "connect", _refuse_network
+    ), patch(
+        "socket.create_connection", _refuse_network
+    ):
+        demo_out = sync_exchange_sl(demo_pos, 344.42, reason="be_timeout")
+    _assert(demo_out is not None and demo_out.get("hub_sl_sync_error"), demo_out)
+    _assert(abs(float(demo_out["hub_sl_sync_attempt_price"]) - 344.42) < 1e-9, demo_out)
+    _assert(demo_client.calls == 1, demo_client.calls)
+    _assert(abs(demo_client.sent[0] - 339.83) < 1e-9, demo_client.sent)
+
+    stored_client = StopClient()
+    stored_pos = {
+        "symbol": "GOOGL/USDT:USDT",
+        "side": "long",
+        "tp2": 361.69,
+        "meta": {
+            "exec_venue": "hub",
+            "hub_sl_price": "330.00",
+            "hub_sl_order_id": "sl-stored",
+            "hub_mark_at_open": 340.0,
+        },
+    }
+    with patch.dict(
+        os.environ,
+        {"EXEC_MODE": "hub_demo", "BITGET_DEMO": "1", "HUB_SYNC_EXCHANGE_SL": "1"},
+        clear=False,
+    ), patch(
+        "exec.bitget_hub.BitgetUtaClient.from_env",
+        return_value=stored_client,
+    ), patch(
+        "exec.router._fetch_hub_mark",
+        return_value=None,
+    ), patch(
+        "ingest.bitget_ohlcv.get_mark_price",
+        return_value=350.0,
+    ), patch(
+        "exec.bitget_hub.price_decimals_for_symbol",
+        return_value=2,
+    ), patch.object(
+        socket.socket, "connect", _refuse_network
+    ), patch(
+        "socket.create_connection", _refuse_network
+    ):
+        stored_out = sync_exchange_sl(stored_pos, 344.42, reason="be_timeout")
+    _assert(stored_out is not None and stored_out.get("hub_sl_sync_error"), stored_out)
+    _assert(stored_client.calls == 1, stored_client.calls)
+    _assert(abs(stored_client.sent[0] - 339.83) < 1e-9, stored_client.sent)
+
     print("smoke_hub_leverage OK")
     return 0
 
