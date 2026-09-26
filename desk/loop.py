@@ -34,7 +34,7 @@ from desk.decision_log import ensure_session_id
 from desk.pipeline import evaluate_candidate
 from risk.gate import RiskGate
 from risk.exits import ExitConfig, check_open_exits
-from ingest.symbols import to_display
+from ingest.symbols import is_trade_denied, to_bitget_id, to_display
 from ingest.bitget_ohlcv import get_ohlcv, set_shared_exchange
 from ingest.bitget_ws import BitgetPublicWs, market_data_mode
 from ingest.universe import UniverseCache, load_scan_env, resolve_scan_symbols
@@ -166,6 +166,12 @@ def process_symbol(
         "risk_reason": None,
         "error": None,
     }
+    if is_trade_denied(symbol):
+        summary["ok"] = True
+        summary["action"] = "SKIP"
+        summary["risk_allowed"] = False
+        summary["risk_reason"] = f"symbol_denied:{to_bitget_id(symbol)}"
+        return summary
     try:
         df = get_ohlcv(symbol=symbol, timeframe=tf, limit=cfg.ohlcv_limit)
         summary["bars"] = len(df)

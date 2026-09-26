@@ -22,8 +22,25 @@ Code: `risk/gate.py`, `risk/sizing.py`, `risk/exits.py`, `risk/atr.py`. Values b
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` |
 | Timeframe blocker | `TF_BLOCKER_ENABLED` | `0` |
 | Timeframes | `TIMEFRAMES` | `15m,1h,4h` |
+| Stablecoin ban | — | `USDCUSDT` always |
+| Meme-coin ban | `MEME_DENY_ENABLED` | `1` (see below) |
 
 State: `data/risk_state.json`, `data/pair_blocks.json` (gitignored).
+
+## Symbol deny
+
+`USDCUSDT` is always denied. Meme coins are denied as well while `MEME_DENY_ENABLED` is on (the default). The desk drops them from the scan, skips them before rules/LLM `decide`, denies them in `risk/gate.py` (`symbol_denied:<BITGET_ID>`), and rejects them again in `open_position`.
+
+Bases include DOGE, SHIB, PEPE, BONK, WIF, FLOKI, and the other names in `DEFAULT_MEME_BASES` (BOME, BRETT, POPCAT, MEW, PNUT, FARTCOIN, and the rest). `1000BONKUSDT`, `1MBABYDOGEUSDT`, `1000000MOGUSDT`, and `SHIB1000USDT` use the same base. APE, ORDI, and LUNC are not on the list. Stock lookalikes (`DDOG`, `GIGADEVICE`, `SOFTBANK`, `BAND`) are not treated as memes.
+
+| Env | Effect |
+|-----|--------|
+| `MEME_DENY_SYMBOLS` | Add a base or symbol (`WLD`, `WLDUSDT`, `FOO/USDT:USDT`) |
+| `MEME_DENY_ALLOW` | Remove a meme base. `DOGE` allows `DOGEUSDT` and `1000DOGEUSDT` |
+| `MEME_DENY_ENABLED=0` | Turn the meme list off |
+| `TRADE_DENY_SYMBOLS` | Extra ids. Not cleared by `MEME_DENY_ALLOW` |
+
+`USDCUSDT` stays denied in every case.
 
 ## Sizing
 

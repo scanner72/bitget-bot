@@ -114,8 +114,16 @@ def main() -> int:
         )
         r8 = gate_ok.check({"symbol": "BTC/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
         _assert(r8["allowed"] is True, f"BTC must still allow: {r8}")
+        os.environ["MEME_DENY_ENABLED"] = "1"
+        os.environ.pop("MEME_DENY_ALLOW", None)
+        r9 = gate_ok.check({"symbol": "1000PEPE/USDT:USDT", "type": "BULLISH_DIV"}, 50.0)
+        print(f"check9 meme deny allow={r9['allowed']} reason={r9['reason']}")
+        _assert(
+            r9["allowed"] is False and str(r9["reason"]).startswith("symbol_denied:1000PEPEUSDT"),
+            f"expected symbol_denied 1000PEPE: {r9}",
+        )
 
-    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill, USDCUSDT)")
+    print("smoke_risk OK: allow + deny (dup symbol, max_notional, daily_loss_kill, USDCUSDT, meme)")
     return 0
 
 
