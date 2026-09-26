@@ -481,8 +481,11 @@ def sync_exchange_sl(
             return None
     except (TypeError, ValueError):
         pass
-    # A rejected move at the same target must not be retried on every quote.
-    # A genuinely new SL remains eligible for one attempt.
+    # A rejected move at the same requested target must not be retried on
+    # every quote. A genuinely new SL remains eligible for one attempt.
+    # The key is the caller price: mark-clamping can rewrite the price sent
+    # to Bitget (long BE 344.42 vs a mark under it), and storing that rewrite
+    # made the next identical request look like a new target.
     attempted = meta.get("hub_sl_sync_attempt_price")
     if meta.get("hub_sl_sync_error") and attempted is not None:
         try:
@@ -597,7 +600,7 @@ def sync_exchange_sl(
         print(f"[HUB] SL MOVE ERROR {pos.get('symbol')}: {exc}")
         return {
             "hub_sl_sync_error": f"{type(exc).__name__}: {exc}",
-            "hub_sl_sync_attempt_price": new_f,
+            "hub_sl_sync_attempt_price": requested_sl,
             "hub_sl_sync_attempt_ts": datetime.now(timezone.utc).isoformat(),
             "hub_sl_sync_reason": reason,
         }

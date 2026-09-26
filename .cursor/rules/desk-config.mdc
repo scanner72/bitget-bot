@@ -21,6 +21,7 @@ Copy numbers from local `.env` / `.env.example`. Do not “realign to v1” unle
 
 - `TIMEFRAMES=15m,1h,4h` (also set on `TIMEFRAME` as a comma list). Loop + public WS scan **all three**. Do not collapse back to 15m-only
 - Hard trade ban: `USDCUSDT` (`USDC/USDT:USDT`). Stablecoin basis pair — drop from scan and deny at the risk gate. Extra bans via `TRADE_DENY_SYMBOLS`. Do not re-enable unless the user asks
+- Meme-coin deny is on by default (`MEME_DENY_ENABLED=1`): DOGE, SHIB, PEPE, BONK, WIF, FLOKI, and the other Bitget USDT-M meme bases in `ingest/symbols.py`, including `1000` / `1M` prefixed contracts. Filtered before decide, again at the risk gate, again at `open_position`. `MEME_DENY_ALLOW` removes a base; `MEME_DENY_SYMBOLS` adds one. Neither lifts `USDCUSDT` or `TRADE_DENY_SYMBOLS`
 - `ALLOWED_TYPES=BULLISH_DIV,BEARISH_DIV,LEVEL_CROSS_DOWN` — **no** `LEVEL_CROSS_UP`
 - `LEVEL_CROSS_DOWN` → long; `LEVEL_CROSS_UP` → short (detector still exists, just not allowed)
 - `ALLOW_LONG=1`, `ALLOW_SHORT=1`
