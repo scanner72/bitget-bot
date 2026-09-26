@@ -35,10 +35,12 @@ def _book(tdir: Path, name: str):
 class _HubClient:
     demo = True
 
-    def __init__(self, pos: dict | None = None) -> None:
+    def __init__(self, pos: dict | None = None, *, tpsl_exc: Exception | None = None) -> None:
         self.placed = 0
         self.closed = 0
+        self.tpsl_calls = 0
         self.pos = pos
+        self.tpsl_exc = tpsl_exc
 
     def place_perp_market(self, *args, **kwargs):
         self.placed += 1
@@ -52,11 +54,17 @@ class _HubClient:
         return {"list": [self.pos] if self.pos else []}
 
     def place_position_tpsl(self, *args, **kwargs):
+        self.tpsl_calls += 1
+        if self.tpsl_exc is not None:
+            raise self.tpsl_exc
         raise RuntimeError("tpsl should not run on mismatch")
+
+    def _round_px(self, price, symbol=None):
+        return f"{float(price):.2f}"
 
 
 def main() -> int:
-    from exec.router import DemoPriceMismatchError
+    from exec.router import DemoPriceMismatchError, HubTpslError
     from exec import router as router_mod
 
     env = {
@@ -78,6 +86,8 @@ def main() -> int:
             "exec.bitget_hub.BitgetUtaClient.from_env", return_value=pre_client
         ), patch.object(router_mod, "_qty_ref_price", return_value=182.63), patch.object(
             router_mod, "_fetch_hub_mark", return_value=1.86
+        ), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
         ):
             raised = False
             try:
@@ -113,7 +123,9 @@ def main() -> int:
             "exec.bitget_hub.BitgetUtaClient.from_env", return_value=fill_client
         ), patch.object(router_mod, "_qty_ref_price", return_value=182.63), patch.object(
             router_mod, "_fetch_hub_mark", return_value=182.50
-        ), patch.object(router_mod, "_find_hub_position", return_value=pos):
+        ), patch.object(router_mod, "_find_hub_position", return_value=pos), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
+        ):
             raised = False
             try:
                 router_mod.open_position(
@@ -151,6 +163,8 @@ def main() -> int:
             router_mod, "_fetch_hub_mark", return_value=332.19
         ), patch.object(router_mod, "_find_hub_position", return_value=aapl_pos), patch.object(
             router_mod, "_place_hub_tpsl"
+        ), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
         ):
             pid = router_mod.open_position(
                 symbol="AAPL/USDT:USDT",
@@ -166,6 +180,50 @@ def main() -> int:
         _assert(abs(float(opens[0]["entry_price"]) - 332.10) < 1e-9, opens[0])
         _assert(ok_client.placed == 1, ok_client.placed)
         _assert(ok_client.closed == 0, ok_client.closed)
+
+        # 3b) TPSL API failure (25592-style) → flatten, no paper shadow.
+        ltc_pos = {
+            "symbol": "LTCUSDT",
+            "posSide": "short",
+            "total": "8.5",
+            "available": "8.5",
+            "avgPrice": "59.78",
+            "markPrice": "59.80",
+        }
+        tpsl_client = _HubClient(
+            ltc_pos,
+            tpsl_exc=RuntimeError(
+                "HTTP 400 code=25592: stop-loss trigger must be greater than mark"
+            ),
+        )
+        book3b = _book(tdir, "tpsl")
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            router_mod, "symbol_tradable_on_demo", return_value=True
+        ), patch.object(router_mod, "exec_mode", return_value="hub_demo"), patch(
+            "exec.bitget_hub.BitgetUtaClient.from_env", return_value=tpsl_client
+        ), patch.object(router_mod, "_qty_ref_price", return_value=58.02), patch.object(
+            router_mod, "_fetch_hub_mark", return_value=59.80
+        ), patch.object(router_mod, "_find_hub_position", return_value=ltc_pos), patch(
+            "exec.bitget_hub.price_decimals_for_symbol", return_value=2
+        ):
+            raised = False
+            try:
+                router_mod.open_position(
+                    symbol="LTC/USDT:USDT",
+                    side="short",
+                    size_usd=500.0,
+                    price=58.02,
+                    meta={"atr": 1.2},
+                    book=book3b,
+                )
+            except HubTpslError as exc:
+                raised = True
+                _assert("25592" in str(exc) or "tpsl" in str(exc).lower(), str(exc))
+        _assert(raised, "tpsl failure must fail-closed")
+        _assert(tpsl_client.placed == 1, f"placed={tpsl_client.placed}")
+        _assert(tpsl_client.tpsl_calls == 1, f"tpsl_calls={tpsl_client.tpsl_calls}")
+        _assert(tpsl_client.closed == 1, f"closed={tpsl_client.closed}")
+        _assert(book3b.list_open() == [], book3b.list_open())
 
         # 4) Pipeline records the skip, no fill.
         os.environ["EXEC_MODE"] = "paper"
@@ -249,7 +307,10 @@ def main() -> int:
         )
         _assert(book4.list_open() == [], book4.list_open())
 
-    print("smoke_hub_price_scale OK: pre-open skip + flatten fill + keep matched + pipeline")
+    print(
+        "smoke_hub_price_scale OK: pre-open skip + flatten fill + keep matched "
+        "+ tpsl fail-closed + pipeline"
+    )
     return 0
 
 

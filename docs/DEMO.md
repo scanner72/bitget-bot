@@ -87,6 +87,21 @@ cd C:\bitget-bot
 
 ---
 
+## Exchange-side Demo observations (2026-09-22)
+
+Factual notes from the UTA Demo desk run. Observed / mitigated — Demo `/equity` + `/fills` remain the money source of truth.
+
+| Observation | Status |
+|-------------|--------|
+| External batch closes on Demo (no bot `hub_close_client_oid`) booked only via reconcile (`missing_on_exchange`) | **Mitigated** — `exec/reconcile.py` closes local ghosts and pulls hub fills/PnL |
+| Bitget TP/SL API `25591` / `25592` on shorts (trigger on wrong side of mark) left unprotected positions | **Mitigated** — clamp/adjust SL+TP vs mark (tick-aware) before place; on `hub_tpsl_error`, fail-closed flatten of the new hub open |
+| Junk pairs (e.g. `USDC/USDT:USDT`) producing noise div signals | **Mitigated** — always-on deny `USDCUSDT` + optional `TRADE_DENY_SYMBOLS` (scan drop + risk gate + router) |
+| Live mainnet | **Blocked** — `BITGET_ALLOW_LIVE=0`, `EXEC_MODE=hub_demo` |
+
+Paper-shadow PnL is diagnostic and can diverge when Demo mark drifts from the public feed; exchange `exec_pnl` wins.
+
+---
+
 ## EN TL;DR (для описания ролика)
 
 Bitget S2 Divergent Agent Desk (Agent Trading): public OHLCV → signals → rules agent → risk gate → **Bitget Demo UTA** execution + paper shadow exits → FastAPI `:8080`. Exchange SL+TP2 on open; soft TP1/BE/trail local. Docker optional. Live mainnet blocked (`BITGET_ALLOW_LIVE=0`).
