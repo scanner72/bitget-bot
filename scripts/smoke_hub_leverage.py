@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -130,10 +131,15 @@ def main() -> int:
     class StopClient:
         def __init__(self) -> None:
             self.calls = 0
+            self.sent: list[float] = []
 
-        def set_position_stop_loss(self, *args, **kwargs):
+        def set_position_stop_loss(self, symbol, position_side, stop_loss, **kwargs):  # noqa: ARG002
             self.calls += 1
+            self.sent.append(float(stop_loss))
             raise RuntimeError("exchange rejected stop")
+
+    def _refuse_network(*_args, **_kwargs):
+        raise AssertionError("smoke_hub_leverage attempted a live network call")
 
     stop_client = StopClient()
     stop_pos = {
@@ -146,6 +152,11 @@ def main() -> int:
             "hub_sl_order_id": "sl-1",
         },
     }
+    # CI (2026-09-26) fetched a live GOOGL mark ~343.84, clamped the requested
+    # long SL 344.42 down to 343.67, and stored that clamped price. The next
+    # identical 344.42 request no longer matched, so the skip did not fire.
+    # Mark and pricePlace are fixed here; the clamp must still happen, and
+    # the retry key stays the requested SL.
     with patch.dict(
         os.environ,
         {"EXEC_MODE": "hub_demo", "BITGET_DEMO": "1", "HUB_SYNC_EXCHANGE_SL": "1"},
@@ -153,16 +164,31 @@ def main() -> int:
     ), patch(
         "exec.bitget_hub.BitgetUtaClient.from_env",
         return_value=stop_client,
+    ), patch(
+        "ingest.bitget_ohlcv.get_mark_price",
+        return_value=343.84,
+    ), patch(
+        "exec.bitget_hub.price_decimals_for_symbol",
+        return_value=2,
+    ), patch.object(
+        socket.socket, "connect", _refuse_network
+    ), patch(
+        "socket.create_connection", _refuse_network
     ):
         first = sync_exchange_sl(stop_pos, 344.42, reason="be_timeout")
         _assert(first is not None and first.get("hub_sl_sync_error"), first)
+        _assert(abs(float(first["hub_sl_sync_attempt_price"]) - 344.42) < 1e-9, first)
+        _assert(stop_client.calls == 1, stop_client.calls)
+        _assert(abs(stop_client.sent[0] - 343.67) < 1e-9, stop_client.sent)
         stop_pos["meta"].update(first)
         second = sync_exchange_sl(stop_pos, 344.42, reason="be_timeout")
         _assert(second is None, second)
         _assert(stop_client.calls == 1, stop_client.calls)
         third = sync_exchange_sl(stop_pos, 345.0, reason="trailing")
         _assert(third is not None and third.get("hub_sl_sync_error"), third)
+        _assert(abs(float(third["hub_sl_sync_attempt_price"]) - 345.0) < 1e-9, third)
         _assert(stop_client.calls == 2, stop_client.calls)
+        _assert(abs(stop_client.sent[1] - 343.67) < 1e-9, stop_client.sent)
 
     print("smoke_hub_leverage OK")
     return 0

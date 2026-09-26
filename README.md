@@ -79,6 +79,7 @@ flowchart LR
 | Hub leverage | `HUB_LEVERAGE` | cap `20`, adaptive `35/SL%` (`PAPER_LEVERAGE` stays 1) |
 | Pair blocker | `PAIR_BLOCKER_ENABLED` | `1` (3 consecutive losses / WR 30 / 48h) |
 | TF blocker | `TF_BLOCKER_ENABLED` | `0` |
+| Symbol deny | `MEME_DENY_*`, `TRADE_DENY_SYMBOLS` | `USDCUSDT` always; meme bases (DOGE, SHIB, PEPE, BONK, WIF, FLOKI, 1000/1M prefixes) on by default. `MEME_DENY_ALLOW` removes a base |
 
 Sizing: `notional = clamp(RISK / (|entry-sl|/entry), MIN, MAX)`. If those env vars are missing, code falls back to risk `2` / max `100` — this repo’s example file is the intended desk.
 

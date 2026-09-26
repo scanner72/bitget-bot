@@ -12,7 +12,7 @@ from desk.decision_log import append_sealed_decision, ensure_session_id
 from exec.demo_universe import NotOnDemoError
 from exec.paper import PaperBook
 from exec.router import DemoPriceMismatchError, HubTpslError, open_position
-from ingest.symbols import to_display
+from ingest.symbols import is_trade_denied, to_bitget_id, to_display
 from risk.gate import RiskGate
 from risk.sizing import notional_from_risk
 
@@ -70,10 +70,25 @@ def evaluate_candidate(
     if proposed_size_usd is not None:
         ctx["proposed_size_usd"] = float(proposed_size_usd)
 
-    agent_out = decide(candidate, ctx)
-    action = str(agent_out.get("action", "SKIP")).upper()
     _sym = str(candidate.get("symbol") or "")
     _sym_disp = to_display(_sym) if _sym else ""
+    denied_reason = (
+        f"symbol_denied:{to_bitget_id(_sym)}" if _sym and is_trade_denied(_sym) else None
+    )
+    if denied_reason:
+        # Scan, risk gate, and open_position deny again. Do not call rules/LLM.
+        agent_out = {
+            "action": "SKIP",
+            "size_usd": 0.0,
+            "side": None,
+            "rationale": denied_reason,
+            "rules_fired": ["symbol_denied"],
+        }
+    else:
+        agent_out = decide(candidate, ctx)
+    action = str(agent_out.get("action", "SKIP")).upper()
+    if denied_reason:
+        action = "SKIP"
     # Divergent BTC regime / momentum / EMA50 filters
     if action in {"ENTER", "REDUCE"}:
         try:
@@ -111,7 +126,15 @@ def evaluate_candidate(
     )
 
     risk_result: dict[str, Any] | None = None
-    if action in {"ENTER", "REDUCE"}:
+    if denied_reason:
+        risk_result = gate.check(candidate, 0.0)
+        if risk_result.get("allowed"):
+            risk_result = {**risk_result, "allowed": False, "reason": denied_reason}
+        print(
+            f"[RISK] DENY {_sym_disp or _sym} ({_sym}) {candidate.get('type')} "
+            f"size=0 reason={risk_result.get('reason')}"
+        )
+    elif action in {"ENTER", "REDUCE"}:
         risk_result = gate.check(candidate, size)
         flag = "ALLOW" if risk_result.get("allowed") else "DENY"
         print(
